@@ -1,7 +1,10 @@
 import { Pool } from 'pg';
 import SurveyForm from './SurveyForm';
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
 
 async function validateToken(token: string) {
   const client = await pool.connect();
