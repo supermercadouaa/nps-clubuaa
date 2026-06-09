@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { Pool } from 'pg';
 import SurveyForm from './SurveyForm';
 
@@ -5,6 +6,8 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
+
+const UAA_PURPLE = '#3b1f8c';
 
 async function validateToken(token: string) {
   const client = await pool.connect();
@@ -23,79 +26,89 @@ async function validateToken(token: string) {
   }
 }
 
-/* ── Pantallas de estado ── */
-function Wrapper({ children }: { children: React.ReactNode }) {
+/* ── Layout compartido para pantallas de estado ── */
+function StatusPage({ icon, title, message }: { icon: string; title: string; message: string }) {
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div
-        className="w-full max-w-sm rounded-3xl p-8 text-center"
-        style={{
-          background: 'rgba(255,255,255,0.07)',
-          border: '1px solid rgba(255,255,255,0.12)',
-          backdropFilter: 'blur(12px)',
-        }}
-      >
-        {children}
+    <div className="min-h-screen bg-white flex flex-col items-center justify-start py-8 px-4">
+      <div className="w-full max-w-sm">
+        {/* Header */}
+        <div
+          className="w-full flex justify-center items-center py-6 rounded-t-2xl"
+          style={{ background: UAA_PURPLE }}
+        >
+          <Image src="/logo-clubuaa.png" alt="Club UAA" width={160} height={60} style={{ objectFit: 'contain' }} />
+        </div>
+
+        {/* Card */}
+        <div className="rounded-b-2xl border border-t-0 border-gray-100 shadow-md p-8 text-center bg-white">
+          <div className="text-5xl mb-4">{icon}</div>
+          <h2 className="text-lg font-bold mb-2" style={{ color: UAA_PURPLE }}>{title}</h2>
+          <p className="text-sm text-gray-600 leading-relaxed">{message}</p>
+        </div>
       </div>
     </div>
   );
 }
 
-function Logo() {
-  return (
-    <div className="flex flex-col items-center mb-6">
-      <span className="text-white text-2xl font-light tracking-widest">Club</span>
-      <span
-        className="text-white text-3xl font-black tracking-widest px-5 py-1 rounded-full mt-1"
-        style={{ background: 'rgba(255,255,255,0.15)', border: '2px solid rgba(255,255,255,0.3)' }}
-      >
-        UAA
-      </span>
-    </div>
-  );
-}
-
-/* ── Página principal (Server Component) ── */
+/* ── Página principal ── */
 export default async function Page({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+
+  /* Tokens especiales de prueba — no consultan la base */
+  if (token === 'test-invalido') {
+    return (
+      <StatusPage
+        icon="🔗"
+        title="Link inválido"
+        message="Este link de encuesta no existe o es incorrecto."
+      />
+    );
+  }
+
+  if (token === 'test-respondido') {
+    return (
+      <StatusPage
+        icon="✅"
+        title="¡Ya respondiste!"
+        message="Ya registramos tu opinión. ¡Muchas gracias por ayudarnos a mejorar!"
+      />
+    );
+  }
+
+  if (token === 'test-demo') {
+    return <SurveyForm token="test-demo" demo={true} />;
+  }
+
+  /* Tokens reales — consultan PostgreSQL */
   const status = await validateToken(token);
 
   if (status === 'invalido') {
     return (
-      <Wrapper>
-        <Logo />
-        <div className="text-4xl mb-4">🔗</div>
-        <h2 className="text-lg font-bold text-white mb-2">Link inválido</h2>
-        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
-          Este link de encuesta no existe o es incorrecto.
-        </p>
-      </Wrapper>
+      <StatusPage
+        icon="🔗"
+        title="Link inválido"
+        message="Este link de encuesta no existe o es incorrecto."
+      />
     );
   }
 
   if (status === 'expirado') {
     return (
-      <Wrapper>
-        <Logo />
-        <div className="text-4xl mb-4">⏰</div>
-        <h2 className="text-lg font-bold text-white mb-2">Link expirado</h2>
-        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
-          Los links de encuesta tienen vigencia de 7 días y este ya venció.
-        </p>
-      </Wrapper>
+      <StatusPage
+        icon="⏰"
+        title="Link expirado"
+        message="Los links de encuesta tienen vigencia de 7 días y este ya venció."
+      />
     );
   }
 
   if (status === 'ya_respondido') {
     return (
-      <Wrapper>
-        <Logo />
-        <div className="text-4xl mb-4">✅</div>
-        <h2 className="text-lg font-bold text-white mb-2">¡Ya respondiste!</h2>
-        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
-          Ya registramos tu opinión. ¡Muchas gracias por ayudarnos a mejorar!
-        </p>
-      </Wrapper>
+      <StatusPage
+        icon="✅"
+        title="¡Ya respondiste!"
+        message="Ya registramos tu opinión. ¡Muchas gracias por ayudarnos a mejorar!"
+      />
     );
   }
 
