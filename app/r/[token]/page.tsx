@@ -53,8 +53,8 @@ function Logo() {
 }
 
 /* ── Página principal (Server Component) ── */
-export default async function Page({ params }: { params: { token: string } }) {
-  const { token } = params;
+export default async function Page({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
   const status = await validateToken(token);
 
   if (status === 'invalido') {
