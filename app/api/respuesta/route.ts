@@ -16,6 +16,26 @@ export async function POST(req: NextRequest) {
 
   const client = await pool.connect();
   try {
+    // Token publico generico: cualquiera con el link puede responder.
+    // Cada submission genera su propio UUID para respetar el UNIQUE de nps_respuestas.
+    // cliente_id=0 y ticket_id=0 identifican estas respuestas en reportes.
+    if (token === 'abcdaddf130814') {
+      const clasificacion = q1 <= 2 ? 'detractor' : q1 === 3 ? 'pasivo' : 'promotor';
+      const aspectosStr: string | null =
+        aspectos && aspectos.length > 0 ? (aspectos as string[]).join(', ') : null;
+      const publicToken = crypto.randomUUID().replace(/-/g, '');
+
+      await client.query(
+        `INSERT INTO nps_respuestas
+           (token, cliente_id, ticket_id, score, clasificacion, canal,
+            score_experiencia, score_productos, score_precios, score_atencion,
+            aspectos_mejorar, comentario)
+         VALUES ($1, 0, 0, $2, $3, 'whatsapp', $4, $5, $6, $7, $8, $9)`,
+        [publicToken, q1, clasificacion, q2, q3, q4, q5, aspectosStr, comentario || null]
+      );
+      return NextResponse.json({ ok: true });
+    }
+
     const check = await client.query(
       `SELECT cliente_id, ticket_id, canal, respondido, expira_at
        FROM nps_enviados WHERE token = $1`,
