@@ -70,12 +70,12 @@ function Gauge({ nps, promotores, pasivos, detractores }: {
     cy - r * Math.sin(toRad(deg)),
   ];
 
-  /* arc path from fromDeg → toDeg (both going CCW from 180° to 0°) */
+  /* sweep=1 (clockwise en SVG) → arco va por ARRIBA del centro */
   const arc = (fromDeg: number, toDeg: number, r: number) => {
     const [x1, y1] = pt(fromDeg, r);
     const [x2, y2] = pt(toDeg, r);
     const large = Math.abs(fromDeg - toDeg) > 180 ? 1 : 0;
-    return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 0 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+    return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
   };
 
   /* needle angle: NPS −100 → 180°, NPS 0 → 90°, NPS +100 → 0° */
