@@ -10,74 +10,76 @@ npm run build    # build de producción (verifica tipos TypeScript)
 npm start        # servidor de producción local
 ```
 
-**Deploy a Vercel** (no hay CI automático vía CLI — el push a `main` dispara el GitHub Action):
-```bash
-vercel --token $VERCEL_TOKEN --prod --yes
-```
+**Deploy:** push a `main` → GitHub Action (`.github/workflows/deploy.yml`) → `vercel --prod`.  
+Secrets en GitHub Actions del repo `supermercadouaa/nps-clubuaa`: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
 
 ## Arquitectura
 
-Next.js 15 App Router desplegado en Vercel. Sin ORM — usa `pg` (node-postgres) directamente en Server Components y API Routes.
+Next.js 15 App Router en Vercel. Sin ORM — `pg` (node-postgres) directo en Server Components y API Routes. No hay tests.
 
 ### Flujo de datos
 
 ```
-n8n (diario)
-  → genera token UUID → INSERT nps_enviados (PostgreSQL)
-  → envía email con link https://nps-clubuaa.vercel.app/r/{token}
+n8n (cron 8am)
+  → MySQL: ticket_super JOIN cliente_clubuaa → clientes con ticket de ayer + x_telcelular
+  → PostgreSQL: nps_enviados → excluidos últimos 90 días
+  → Code: filtra, genera token UUID + link → https://nps-clubuaa.vercel.app/r/{token}
+  → PostgreSQL: INSERT nps_enviados (canal='whatsapp')
+  → WhatsApp API (Meta): envía template nps_encuesta con nombre + link
 
 Usuario abre el link
-  → app/r/[token]/page.tsx  (Server Component)
-      → valida token contra nps_enviados en PostgreSQL
-      → si ok: renderiza SurveyForm (Client Component)
-      → si no: muestra pantalla de estado (inválido / expirado / ya respondido)
+  → app/r/[token]/page.tsx (Server Component)
+      → tokens especiales: cortocircuitan antes de tocar DB (ver abajo)
+      → tokens reales: valida contra nps_enviados (respondido, expira_at)
 
 Usuario envía el formulario
   → POST /api/respuesta
-      → valida token nuevamente
-      → INSERT nps_respuestas
-      → UPDATE nps_enviados SET respondido = TRUE
-      → redirect a /gracias
+      → token 'abcdaddf130814': inserta directo con cliente_id=0, ticket_id=0 (sin validar nps_enviados)
+      → tokens reales: INSERT nps_respuestas + UPDATE nps_enviados SET respondido=TRUE (BEGIN/COMMIT)
 ```
 
 ### Base de datos (PostgreSQL — supermercadopbi.duckdns.org:5432, db: supermercado)
 
-**`nps_enviados`** — registros de envíos generados por n8n:
-- `token VARCHAR(64) UNIQUE` — UUID sin guiones, 32 chars
-- `cliente_id`, `ticket_id`, `canal`, `expira_at`, `respondido`, `abierto`
+**`nps_enviados`** — un registro por envío generado por n8n:
+- `token VARCHAR(64) UNIQUE`, `cliente_id`, `ticket_id`, `canal` (`whatsapp`/`email`)
+- `expira_at TIMESTAMP`, `respondido BOOLEAN`, `abierto BOOLEAN`, `abierto_at`
 
-**`nps_respuestas`** — respuestas guardadas por el API:
-- `score SMALLINT` — Q1 recomendación (1-5), determina `clasificacion`
-- `score_experiencia`, `score_productos`, `score_precios`, `score_atencion` — Q2-Q5 (1-5)
+**`nps_respuestas`** — una fila por respuesta recibida:
+- `score SMALLINT` — Q1 recomendación (1–5), define `clasificacion`
+- `score_experiencia`, `score_productos`, `score_precios`, `score_atencion` — Q2–Q5 (1–5)
 - `aspectos_mejorar TEXT` — Q6, opciones separadas por coma
-- `comentario TEXT` — Q7, texto libre
-- `clasificacion VARCHAR(20)` — `promotor` (4-5) / `pasivo` (3) / `detractor` (1-2)
+- `comentario TEXT` — Q7 libre
+- `clasificacion`: `detractor` (1–2) / `pasivo` (3) / `promotor` (4–5)
+- Respuestas del token público tienen `cliente_id=0` y `ticket_id=0`
 
-### Tokens de prueba (no consultan DB)
+**NPS Score** = `((promotores − detractores) / total) × 100` → rango −100 a +100.
 
-- `/r/test-invalido` → pantalla link inválido
-- `/r/test-respondido` → pantalla ya respondido
-- `/r/test-demo` → formulario completo en modo demo (no guarda)
+### Tokens especiales (hardcodeados en page.tsx, no tocan DB)
 
-### Conexión PostgreSQL
+| Token | Comportamiento |
+|---|---|
+| `test-invalido` | Pantalla "link inválido" |
+| `test-respondido` | Pantalla "ya respondiste" |
+| `test-demo` | Formulario completo, **no guarda** (modo demo visual) |
+| `abcdaddf130814` | Formulario real, **sí guarda** en nps_respuestas con cliente_id=0 |
 
-Ambos archivos que usan `pg` deben incluir `ssl: { rejectUnauthorized: false }` — requerido por Vercel:
+### Reglas de implementación críticas
 
-```typescript
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
-```
+- Todo archivo que use `pg` debe incluir `ssl: { rejectUnauthorized: false }` (requerido por Vercel).
+- El dashboard (`app/dashboard/page.tsx`) necesita `export const dynamic = 'force-dynamic'` para no ser cacheado y mostrar datos en tiempo real.
+- `router.refresh()` en el Client Component `AutoRefresh.tsx` es lo que dispara el re-fetch del Server Component.
 
 ### Variables de entorno
 
 ```
 DATABASE_URL=postgresql://etl_user:...@supermercadopbi.duckdns.org:5432/supermercado
 ```
-En Vercel está seteada como encrypted. Localmente usar `.env.local` (no commitear).
+En Vercel está seteada como encrypted. Localmente usar `.env.local`.
 
-### Deploy
+### n8n (https://n8n.srvs.uaa.com.ar)
 
-Push a `main` → GitHub Action (`.github/workflows/deploy.yml`) → `vercel --prod`.
-Los secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` están en GitHub Actions secrets del repo `supermercadouaa/nps-clubuaa`.
+Dos workflows activos:
+- **NPS — Envio Diario** (`bqVtSDbr86azhHjY`) — cron 8am, hasta 100 clientes por día
+- **NPS — Envio Diario (DEMO)** (`4w5VZmvVdbeQ9i13`) — manual, clientes fijos 122797 y 118922
+
+Ambos usan credencial MySQL `VjA2xhrozDNhr2RW` (ticket_super + cliente_clubuaa) y credencial Postgres `k6dkO6SuVAJgqwHd`. La API key de n8n se guarda fuera del repo.
