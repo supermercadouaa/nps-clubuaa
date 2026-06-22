@@ -1,29 +1,20 @@
 import Image from 'next/image';
-import { Pool } from 'pg';
+import sql from 'mssql';
+import { getPool } from '@/lib/mssql';
 import SurveyForm from './SurveyForm';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
 
 const UAA_PURPLE = '#3b1f8c';
 
 async function validateToken(token: string) {
-  const client = await pool.connect();
-  try {
-    const result = await client.query(
-      `SELECT respondido, expira_at FROM nps_enviados WHERE token = $1`,
-      [token]
-    );
-    if (result.rows.length === 0) return 'invalido';
-    const row = result.rows[0];
-    if (row.respondido) return 'ya_respondido';
-    if (new Date(row.expira_at) < new Date()) return 'expirado';
-    return 'ok';
-  } finally {
-    client.release();
-  }
+  const pool = await getPool();
+  const result = await pool.request()
+    .input('token', sql.VarChar(64), token)
+    .query('SELECT respondido, expira_at FROM nps_enviados WHERE token = @token');
+  if (result.recordset.length === 0) return 'invalido';
+  const row = result.recordset[0];
+  if (row.respondido) return 'ya_respondido';
+  if (new Date(row.expira_at) < new Date()) return 'expirado';
+  return 'ok';
 }
 
 /* ── Layout compartido para pantallas de estado ── */
