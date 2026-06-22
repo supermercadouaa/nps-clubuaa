@@ -79,10 +79,6 @@ export default async function Page({ params }: { params: Promise<{ token: string
     return <SurveyForm token="test-demo" demo={true} />;
   }
 
-  if (token === 'abcdaddf130814') {
-    return <SurveyForm token="abcdaddf130814" />;
-  }
-
   /* Tokens reales — consultan PostgreSQL */
   const status = await validateToken(token);
 

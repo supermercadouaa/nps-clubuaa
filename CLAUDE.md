@@ -23,7 +23,7 @@ Next.js 15 App Router en Vercel. Sin ORM — `pg` (node-postgres) directo en Ser
 n8n (cron 8am)
   → MySQL: ticket_super JOIN cliente_clubuaa → clientes con ticket de ayer + x_telcelular
   → PostgreSQL: nps_enviados → excluidos últimos 90 días
-  → Code: filtra, genera token UUID + link → https://nps-clubuaa.vercel.app/r/{token}
+  → Code: filtra, genera token UUID + link → https://encuesta.clubuaa.ar/r/{token}
   → PostgreSQL: INSERT nps_enviados (canal='whatsapp')
   → WhatsApp API (Meta): envía template nps_encuesta con nombre + link
 
