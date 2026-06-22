@@ -2,7 +2,11 @@ export const dynamic = 'force-dynamic';
 
 import Image from 'next/image';
 import { Pool } from 'pg';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { verifySession } from '@/lib/auth';
 import AutoRefresh from './AutoRefresh';
+import LogoutButton from './LogoutButton';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -225,6 +229,11 @@ type Row = { score: number; clasificacion: string; comentario: string | null; ca
 type Aspecto = { aspecto: string; total: number };
 
 export default async function DashboardPage() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('nps_session')?.value;
+  const email = token ? verifySession(token) : null;
+  if (!email) redirect('/dashboard/login');
+
   const { s, aspectos, recientes } = await getMetrics();
 
   const total       = s.total       ?? 0;
@@ -246,7 +255,11 @@ export default async function DashboardPage() {
             <p className="text-purple-300 text-xs">nps_respuestas · auto-refresh 30 s</p>
           </div>
         </div>
-        <AutoRefresh intervalMs={30000} />
+        <div className="flex items-center gap-3">
+          <span className="text-purple-200 text-xs hidden sm:inline">{email}</span>
+          <AutoRefresh intervalMs={30000} />
+          <LogoutButton />
+        </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
