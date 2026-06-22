@@ -11,7 +11,8 @@
     "next": "15.3.9",
     "react": "^18",
     "react-dom": "^18",
-    "pg": "^8.11.5"
+    "pg": "^8.11.5",
+    "mssql": "^11.0.1"
   },
   "devDependencies": {
     "@types/node": "^20",

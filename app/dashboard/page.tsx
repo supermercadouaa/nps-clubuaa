@@ -1,60 +1,53 @@
 export const dynamic = 'force-dynamic';
 
 import Image from 'next/image';
-import { Pool } from 'pg';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/lib/auth';
+import { getPool } from '@/lib/mssql';
 import AutoRefresh from './AutoRefresh';
 import LogoutButton from './LogoutButton';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
 
 const UAA_PURPLE = '#3b1f8c';
 const UAA_LIGHT  = '#f3f0ff';
 
 async function getMetrics() {
-  const client = await pool.connect();
-  try {
-    const summary = await client.query(`
-      SELECT
-        COUNT(*)::int                                                               AS total,
-        SUM(CASE WHEN clasificacion = 'promotor'  THEN 1 ELSE 0 END)::int         AS promotores,
-        SUM(CASE WHEN clasificacion = 'pasivo'    THEN 1 ELSE 0 END)::int         AS pasivos,
-        SUM(CASE WHEN clasificacion = 'detractor' THEN 1 ELSE 0 END)::int         AS detractores,
-        ROUND(AVG(score_experiencia)::numeric, 1)                                  AS avg_experiencia,
-        ROUND(AVG(score_productos)::numeric,   1)                                  AS avg_productos,
-        ROUND(AVG(score_precios)::numeric,     1)                                  AS avg_precios,
-        ROUND(AVG(score_atencion)::numeric,    1)                                  AS avg_atencion
-      FROM nps_respuestas
-    `);
+  const pool = await getPool();
 
-    const aspectos = await client.query(`
-      SELECT aspecto, COUNT(*)::int AS total
-      FROM (
-        SELECT TRIM(UNNEST(STRING_TO_ARRAY(aspectos_mejorar, ','))) AS aspecto
-        FROM nps_respuestas
-        WHERE aspectos_mejorar IS NOT NULL
-      ) t
-      WHERE aspecto != ''
-      GROUP BY aspecto
-      ORDER BY total DESC
-    `);
+  const summary = await pool.request().query(`
+    SELECT
+      COUNT(*)                                                          AS total,
+      SUM(CASE WHEN clasificacion = 'promotor'  THEN 1 ELSE 0 END)    AS promotores,
+      SUM(CASE WHEN clasificacion = 'pasivo'    THEN 1 ELSE 0 END)    AS pasivos,
+      SUM(CASE WHEN clasificacion = 'detractor' THEN 1 ELSE 0 END)    AS detractores,
+      ROUND(AVG(CAST(score_experiencia AS FLOAT)), 1)                  AS avg_experiencia,
+      ROUND(AVG(CAST(score_productos   AS FLOAT)), 1)                  AS avg_productos,
+      ROUND(AVG(CAST(score_precios     AS FLOAT)), 1)                  AS avg_precios,
+      ROUND(AVG(CAST(score_atencion    AS FLOAT)), 1)                  AS avg_atencion
+    FROM nps_respuestas
+  `);
 
-    const recientes = await client.query(`
-      SELECT score, clasificacion, comentario, canal, cliente_id, respondido_at
-      FROM nps_respuestas
-      ORDER BY respondido_at DESC
-      LIMIT 10
-    `);
+  const aspectos = await pool.request().query(`
+    SELECT LTRIM(RTRIM(value)) AS aspecto, COUNT(*) AS total
+    FROM nps_respuestas
+    CROSS APPLY STRING_SPLIT(aspectos_mejorar, ',')
+    WHERE aspectos_mejorar IS NOT NULL
+      AND LTRIM(RTRIM(value)) != ''
+    GROUP BY LTRIM(RTRIM(value))
+    ORDER BY total DESC
+  `);
 
-    return { s: summary.rows[0], aspectos: aspectos.rows, recientes: recientes.rows };
-  } finally {
-    client.release();
-  }
+  const recientes = await pool.request().query(`
+    SELECT TOP 10 score, clasificacion, comentario, canal, cliente_id, respondido_at
+    FROM nps_respuestas
+    ORDER BY respondido_at DESC
+  `);
+
+  return {
+    s: summary.recordset[0],
+    aspectos: aspectos.recordset,
+    recientes: recientes.recordset,
+  };
 }
 
 /* ─────────────────────────────────────────
