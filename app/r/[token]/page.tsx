@@ -1,5 +1,4 @@
 import Image from 'next/image';
-import * as sql from 'mssql';
 import { getPool } from '@/lib/mssql';
 import SurveyForm from './SurveyForm';
 
@@ -8,7 +7,7 @@ const UAA_PURPLE = '#3b1f8c';
 async function validateToken(token: string) {
   const pool = await getPool();
   const result = await pool.request()
-    .input('token', sql.VarChar(64), token)
+    .input('token', token)
     .query('SELECT respondido, expira_at FROM nps_enviados WHERE token = @token');
   if (result.recordset.length === 0) return 'invalido';
   const row = result.recordset[0];

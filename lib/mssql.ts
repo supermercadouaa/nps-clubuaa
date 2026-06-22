@@ -1,6 +1,7 @@
-import * as sql from 'mssql';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const mssql = require('mssql');
 
-const config: sql.config = {
+const config = {
   server: process.env.MSSQL_SERVER!,
   database: process.env.MSSQL_DATABASE!,
   user: process.env.MSSQL_USER!,
@@ -14,11 +15,13 @@ const config: sql.config = {
   requestTimeout: 30000,
 };
 
-let pool: sql.ConnectionPool | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let pool: any = null;
 
-export async function getPool(): Promise<sql.ConnectionPool> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getPool(): Promise<any> {
   if (!pool || !pool.connected) {
-    pool = await sql.connect(config);
+    pool = await mssql.connect(config);
   }
   return pool;
 }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/mssql';
-import * as sql from 'mssql';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -14,7 +13,7 @@ export async function POST(req: NextRequest) {
     const pool = await getPool();
 
     const check = await pool.request()
-      .input('token', sql.VarChar(64), token)
+      .input('token', token)
       .query('SELECT cliente_id, ticket_id, canal, respondido, expira_at FROM nps_enviados WHERE token = @token');
 
     if (check.recordset.length === 0)
@@ -33,18 +32,18 @@ export async function POST(req: NextRequest) {
       aspectos && aspectos.length > 0 ? (aspectos as string[]).join(', ') : null;
 
     await pool.request()
-      .input('token',      sql.VarChar(64),  token)
-      .input('cliente_id', sql.Int,           env.cliente_id)
-      .input('ticket_id',  sql.Int,           env.ticket_id)
-      .input('score',      sql.SmallInt,      q1)
-      .input('clasif',     sql.VarChar(20),   clasificacion)
-      .input('canal',      sql.VarChar(20),   env.canal ?? 'whatsapp')
-      .input('q2',         sql.SmallInt,      q2)
-      .input('q3',         sql.SmallInt,      q3)
-      .input('q4',         sql.SmallInt,      q4)
-      .input('q5',         sql.SmallInt,      q5)
-      .input('aspectos',   sql.VarChar(500),  aspectosStr)
-      .input('comentario', sql.VarChar(1000), comentario || null)
+      .input('token',      token)
+      .input('cliente_id', env.cliente_id)
+      .input('ticket_id',  env.ticket_id)
+      .input('score',      q1)
+      .input('clasif',     clasificacion)
+      .input('canal',      env.canal ?? 'whatsapp')
+      .input('q2',         q2)
+      .input('q3',         q3)
+      .input('q4',         q4)
+      .input('q5',         q5)
+      .input('aspectos',   aspectosStr)
+      .input('comentario', comentario || null)
       .query(`
         INSERT INTO nps_respuestas
           (token, cliente_id, ticket_id, score, clasificacion, canal,
@@ -56,7 +55,7 @@ export async function POST(req: NextRequest) {
       `);
 
     await pool.request()
-      .input('token', sql.VarChar(64), token)
+      .input('token', token)
       .query('UPDATE nps_enviados SET respondido = 1 WHERE token = @token');
 
     return NextResponse.json({ ok: true });
