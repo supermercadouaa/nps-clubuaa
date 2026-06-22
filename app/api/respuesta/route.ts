@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/mssql';
-import sql from 'mssql';
+import * as sql from 'mssql';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();

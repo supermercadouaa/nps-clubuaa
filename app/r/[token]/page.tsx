@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import sql from 'mssql';
+import * as sql from 'mssql';
 import { getPool } from '@/lib/mssql';
 import SurveyForm from './SurveyForm';
 

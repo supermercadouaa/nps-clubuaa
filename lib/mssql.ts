@@ -1,4 +1,4 @@
-import sql from 'mssql';
+import * as sql from 'mssql';
 
 const config: sql.config = {
   server: process.env.MSSQL_SERVER!,
