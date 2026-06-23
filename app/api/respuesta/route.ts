@@ -12,6 +12,39 @@ export async function POST(req: NextRequest) {
   try {
     const pool = await getPool();
 
+    /* Token demo público — guarda sin requerir fila en nps_enviados */
+    if (token === 'test-demo-habilitado') {
+      const clasificacion = q1 <= 2 ? 'detractor' : q1 === 3 ? 'pasivo' : 'promotor';
+      const aspectosStr: string | null =
+        aspectos && aspectos.length > 0 ? (aspectos as string[]).join(', ') : null;
+      const demoToken = `test-demo-habilitado-${Date.now()}`;
+
+      await pool.request()
+        .input('token',      demoToken)
+        .input('cliente_id', 0)
+        .input('ticket_id',  0)
+        .input('score',      q1)
+        .input('clasif',     clasificacion)
+        .input('canal',      'whatsapp')
+        .input('q2',         q2)
+        .input('q3',         q3)
+        .input('q4',         q4)
+        .input('q5',         q5)
+        .input('aspectos',   aspectosStr)
+        .input('comentario', comentario || null)
+        .query(`
+          INSERT INTO nps_respuestas
+            (token, cliente_id, ticket_id, score, clasificacion, canal,
+             score_experiencia, score_productos, score_precios, score_atencion,
+             aspectos_mejorar, comentario)
+          VALUES
+            (@token, @cliente_id, @ticket_id, @score, @clasif, @canal,
+             @q2, @q3, @q4, @q5, @aspectos, @comentario)
+        `);
+
+      return NextResponse.json({ ok: true });
+    }
+
     const check = await pool.request()
       .input('token', token)
       .query('SELECT cliente_id, ticket_id, canal, respondido, expira_at FROM nps_enviados WHERE token = @token');
