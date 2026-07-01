@@ -169,30 +169,22 @@ export default function SurveyForm({ token, demo = false }: { token: string; dem
         </div>
 
         <form onSubmit={handleSubmit}>
-          <QuestionBlock number={1} text="¿Qué tan probable es que recomiendes a SuperUAA a familiares o amigos?">
-            <StarRating value={q1} onChange={setQ1} minLabel="Nada probable" maxLabel="Muy probable" />
-          </QuestionBlock>
-
-          <QuestionBlock number={2} text="En general, ¿cómo calificarías tu experiencia de compra en nuestra sucursal?">
-            <StarRating value={q2} onChange={setQ2} minLabel="Muy mala" maxLabel="Excelente" />
-          </QuestionBlock>
-
-          <QuestionBlock number={3} text="¿Pudiste encontrar los productos que buscabas durante tu compra?">
+          <QuestionBlock number={1} text="¿Pudiste encontrar los productos que buscabas durante tu compra?">
             <StarRating value={q3} onChange={setQ3} minLabel="No encontré casi nada" maxLabel="Encontré todo" />
           </QuestionBlock>
 
-          <QuestionBlock number={4} text="¿Cómo calificás nuestros precios?">
+          <QuestionBlock number={2} text="¿Cómo calificás nuestros precios?">
             <StarRating value={q4} onChange={setQ4} minLabel="Muy malos" maxLabel="Excelentes" />
           </QuestionBlock>
 
-          <QuestionBlock number={5} text="¿Cómo calificás la atención recibida por parte de nuestro equipo?">
+          <QuestionBlock number={3} text="¿Cómo calificás la atención recibida por parte de nuestro equipo?">
             <StarRating value={q5} onChange={setQ5} minLabel="Muy mala" maxLabel="Excelente" />
           </QuestionBlock>
 
-          {/* Q6 — Multi-select */}
+          {/* Q6 → ahora posición 4 */}
           <div className="rounded-xl p-4 mb-3 border border-gray-100 bg-white shadow-sm">
             <p className="text-sm font-semibold text-gray-800">
-              <span className="text-purple-600 mr-1">6.</span>
+              <span className="text-purple-600 mr-1">4.</span>
               ¿En qué aspecto considerás que podemos mejorar?
             </p>
             <p className="text-xs text-gray-400 mt-0.5 mb-3">Podés seleccionar una o más opciones</p>
@@ -220,6 +212,14 @@ export default function SurveyForm({ token, demo = false }: { token: string; dem
               })}
             </div>
           </div>
+
+          <QuestionBlock number={5} text="¿Qué tan probable es que recomiendes a SuperUAA a familiares o amigos?">
+            <StarRating value={q1} onChange={setQ1} minLabel="Nada probable" maxLabel="Muy probable" />
+          </QuestionBlock>
+
+          <QuestionBlock number={6} text="En general, ¿cómo calificarías tu experiencia de compra en nuestra sucursal?">
+            <StarRating value={q2} onChange={setQ2} minLabel="Muy mala" maxLabel="Excelente" />
+          </QuestionBlock>
 
           {/* Q7 — Comentario */}
           <div className="rounded-xl p-4 mb-6 border border-gray-100 bg-white shadow-sm">
