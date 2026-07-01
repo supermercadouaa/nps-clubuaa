@@ -213,12 +213,12 @@ export default function SurveyForm({ token, demo = false }: { token: string; dem
             </div>
           </div>
 
-          <QuestionBlock number={5} text="¿Qué tan probable es que recomiendes a SuperUAA a familiares o amigos?">
-            <StarRating value={q1} onChange={setQ1} minLabel="Nada probable" maxLabel="Muy probable" />
+          <QuestionBlock number={5} text="En general, ¿cómo calificarías tu experiencia de compra en nuestra sucursal?">
+            <StarRating value={q2} onChange={setQ2} minLabel="Muy mala" maxLabel="Excelente" />
           </QuestionBlock>
 
-          <QuestionBlock number={6} text="En general, ¿cómo calificarías tu experiencia de compra en nuestra sucursal?">
-            <StarRating value={q2} onChange={setQ2} minLabel="Muy mala" maxLabel="Excelente" />
+          <QuestionBlock number={6} text="¿Qué tan probable es que recomiendes a SuperUAA a familiares o amigos?">
+            <StarRating value={q1} onChange={setQ1} minLabel="Nada probable" maxLabel="Muy probable" />
           </QuestionBlock>
 
           {/* Q7 — Comentario */}
