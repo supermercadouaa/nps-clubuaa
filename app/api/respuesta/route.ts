@@ -36,10 +36,11 @@ export async function POST(req: NextRequest) {
           INSERT INTO nps_respuestas
             (token, cliente_id, ticket_id, score, clasificacion, canal,
              score_experiencia, score_productos, score_precios, score_atencion,
-             aspectos_mejorar, comentario)
+             aspectos_mejorar, comentario, respondido_at)
           VALUES
             (@token, @cliente_id, @ticket_id, @score, @clasif, @canal,
-             @q2, @q3, @q4, @q5, @aspectos, @comentario)
+             @q2, @q3, @q4, @q5, @aspectos, @comentario,
+             DATEADD(hour, -3, GETUTCDATE()))
         `);
 
       return NextResponse.json({ ok: true });
@@ -81,10 +82,11 @@ export async function POST(req: NextRequest) {
         INSERT INTO nps_respuestas
           (token, cliente_id, ticket_id, score, clasificacion, canal,
            score_experiencia, score_productos, score_precios, score_atencion,
-           aspectos_mejorar, comentario)
+           aspectos_mejorar, comentario, respondido_at)
         VALUES
           (@token, @cliente_id, @ticket_id, @score, @clasif, @canal,
-           @q2, @q3, @q4, @q5, @aspectos, @comentario)
+           @q2, @q3, @q4, @q5, @aspectos, @comentario,
+           DATEADD(hour, -3, GETUTCDATE()))
       `);
 
     await pool.request()
