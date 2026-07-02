@@ -26,7 +26,6 @@ async function fetchData(): Promise<{ rows: Row[]; enviados: number; sucursalesA
              score_experiencia, score_productos, score_precios, score_atencion,
              aspectos_mejorar
       FROM nps_respuestas
-      WHERE respondido_at IS NOT NULL
       ORDER BY respondido_at DESC
     `),
     pool.request().query(`
@@ -112,13 +111,16 @@ async function fetchData(): Promise<{ rows: Row[]; enviados: number; sucursalesA
     }
   }
 
-  const rows: Row[] = npsRows
-    .filter((row) => row.respondido_at != null)
-    .map((row) => {
+  const rows: Row[] = npsRows.map((row) => {
       const m = row.ticket_id > 0 ? mysqlMap.get(Number(row.ticket_id)) : undefined;
       const rawAt = row.respondido_at;
-      const at = rawAt instanceof Date ? rawAt : new Date(String(rawAt));
-      const safeIso = !isNaN(at.getTime()) ? at.toISOString() : new Date(0).toISOString();
+      let safeIso: string;
+      if (!rawAt) {
+        safeIso = new Date(0).toISOString();
+      } else {
+        const at = rawAt instanceof Date ? rawAt : new Date(String(rawAt));
+        safeIso = !isNaN(at.getTime()) ? at.toISOString() : new Date(0).toISOString();
+      }
       return {
         score:             Number(row.score),
         clasificacion:     String(row.clasificacion),
