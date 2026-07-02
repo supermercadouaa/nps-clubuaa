@@ -25,8 +25,10 @@ export default function LoginPage() {
       });
       if (res.ok) {
         router.push('/dashboard');
+      } else if (res.status === 429) {
+        setError('Demasiados intentos. Esperá 15 minutos antes de volver a intentar.');
       } else {
-        setError('Credenciales incorrectas. El email debe ser @uaa.com.ar.');
+        setError('Credenciales incorrectas.');
       }
     } catch {
       setError('Error de conexión. Intentá de nuevo.');
