@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Image from 'next/image';
-import { TrendingUp, TrendingDown, Minus, Star, MessageSquare, BarChart3, MapPin, Send } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Star, MessageSquare, BarChart3, MapPin, Send, Search } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -177,6 +177,22 @@ function ClasifBadge({ c }: { c: string }) {
   return <Badge variant="secondary" className="text-xs">{c}</Badge>;
 }
 
+/* ─── Highlight matching text ─── */
+function Highlight({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text}</>;
+  const q = query.trim();
+  const parts = text.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.toLowerCase() === q.toLowerCase()
+          ? <mark key={i} className="bg-yellow-200 text-yellow-900 rounded-sm px-0.5">{p}</mark>
+          : p
+      )}
+    </>
+  );
+}
+
 function Stars({ n }: { n: number }) {
   return <span className="text-amber-400 tracking-tight">{'★'.repeat(Math.max(0,n))}{'☆'.repeat(Math.max(0,5-n))}</span>;
 }
@@ -207,6 +223,7 @@ export default function DashboardClient({
 }) {
   const [sucursal, setSucursalRaw] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
+  const [search, setSearch] = useState('');
 
   function setSucursal(v: string) { setSucursalRaw(v); setSelectedDate(''); }
 
@@ -234,7 +251,16 @@ export default function DashboardClient({
   const metrics    = useMemo(() => calcMetrics(filtered), [filtered]);
   const aspectos   = useMemo(() => calcAspectos(filtered, metrics.total), [filtered, metrics.total]);
   const sucBrkdwn  = useMemo(() => calcBySucursal(rows), [rows]); // always all data
-  const comentarios = useMemo(() => filtered.filter(r => r.comentario?.trim()), [filtered]);
+  const comentarios = useMemo(() => {
+    const withText = filtered.filter(r => r.comentario?.trim());
+    if (!search.trim()) return withText;
+    const q = search.trim().toLowerCase();
+    return withText.filter(r =>
+      r.comentario?.toLowerCase().includes(q) ||
+      r.nombre_cliente?.toLowerCase().includes(q) ||
+      r.sucursal_nombre?.toLowerCase().includes(q)
+    );
+  }, [filtered, search]);
   const recientes   = filtered.slice(0, 10);
   const maxAspecto  = aspectos.length > 0 ? aspectos[0].n : 1;
 
@@ -527,9 +553,30 @@ export default function DashboardClient({
           <TabsContent value="comentarios">
             <Card className="shadow-sm border-border/60">
               <CardHeader className="pb-0 pt-5 px-6">
-                <CardTitle className="text-sm font-semibold">
-                  Comentarios <span className="ml-2 text-muted-foreground font-normal text-xs">{comentarios.length} con texto</span>
-                </CardTitle>
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <CardTitle className="text-sm font-semibold">
+                    Comentarios
+                    <span className="ml-2 text-muted-foreground font-normal text-xs">{comentarios.length} resultado{comentarios.length !== 1 ? 's' : ''}</span>
+                  </CardTitle>
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none"/>
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      placeholder="Buscar comentario, cliente o sucursal..."
+                      className="h-8 pl-8 pr-3 text-xs rounded-md border border-border bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 w-72"
+                    />
+                    {search && (
+                      <button
+                        onClick={() => setSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-base leading-none"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="px-0 pb-0 pt-3">
                 {comentarios.length === 0 ? (
@@ -574,7 +621,9 @@ export default function DashboardClient({
                               <div className="flex flex-col gap-1"><Stars n={r.score}/><ClasifBadge c={r.clasificacion}/></div>
                             </TableCell>
                             <TableCell className="align-top py-3 pr-6 max-w-xs">
-                              <p className="text-xs text-foreground leading-relaxed">{r.comentario}</p>
+                              <p className="text-xs text-foreground leading-relaxed">
+                                <Highlight text={r.comentario ?? ''} query={search}/>
+                              </p>
                             </TableCell>
                           </TableRow>
                         ))}
