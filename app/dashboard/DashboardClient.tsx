@@ -2,90 +2,72 @@
 
 import { useState, useMemo } from 'react';
 import Image from 'next/image';
-import { TrendingUp, TrendingDown, Minus, Star, MessageSquare, BarChart3, MapPin } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Star, MessageSquare, BarChart3, MapPin, Send } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AutoRefresh from './AutoRefresh';
 import LogoutButton from './LogoutButton';
 
-/* ─── Constants ─── */
 const UAA_PURPLE = '#3b1f8c';
-
 const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
 /* ─── Types ─── */
 export type Row = {
-  score: number;
-  clasificacion: string;
-  comentario: string | null;
-  canal: string;
-  cliente_id: number;
-  ticket_id: number;
-  respondido_at: string;
-  score_experiencia: number | null;
-  score_productos: number | null;
-  score_precios: number | null;
-  score_atencion: number | null;
+  score: number; clasificacion: string; comentario: string | null; canal: string;
+  cliente_id: number; ticket_id: number; respondido_at: string;
+  score_experiencia: number | null; score_productos: number | null;
+  score_precios: number | null; score_atencion: number | null;
   aspectos_mejorar: string | null;
-  fecha_compra: string | null;
-  hora_compra: string | null;
-  c_sucursal: string | null;
-  sucursal_nombre: string | null;
-  nombre_cliente: string | null;
+  fecha_compra: string | null; hora_compra: string | null;
+  c_sucursal: string | null; sucursal_nombre: string | null; nombre_cliente: string | null;
 };
 
-/* ─── Date helpers ─── */
+/* ─── Helpers ─── */
 function getDateKey(iso: string): string {
   const d = new Date(iso);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
 }
-
 function dateLabel(key: string): string {
   const [y, m, d] = key.split('-').map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d));
-  return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y} - ${DIAS[date.getUTCDay()]}`;
+  return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y} - ${DIAS[new Date(Date.UTC(y,m-1,d)).getUTCDay()]}`;
 }
-
-function fmtRespondidoAt(iso: string): string {
+function fmtAt(iso: string): string {
   const d = new Date(iso);
   return `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}/${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
+}
+function avgOf(nums: (number|null)[]): number | null {
+  const vals = nums.filter(n => n != null) as number[];
+  return vals.length > 0 ? Math.round((vals.reduce((a,b) => a+b, 0) / vals.length) * 10) / 10 : null;
 }
 
 /* ─── Metric helpers ─── */
 type Metrics = {
   total: number; promotores: number; pasivos: number; detractores: number; nps: number;
-  avgExp: number | null; avgProd: number | null; avgPrec: number | null; avgAten: number | null;
+  avgExp: number|null; avgProd: number|null; avgPrec: number|null; avgAten: number|null;
 };
 
 function calcMetrics(rows: Row[]): Metrics {
   let promotores = 0, pasivos = 0, detractores = 0;
-  let sumExp = 0, sumProd = 0, sumPrec = 0, sumAten = 0;
-  let cntExp = 0, cntProd = 0, cntPrec = 0, cntAten = 0;
   for (const r of rows) {
-    if (r.clasificacion === 'promotor')  promotores++;
+    if      (r.clasificacion === 'promotor')  promotores++;
     else if (r.clasificacion === 'pasivo')    pasivos++;
     else if (r.clasificacion === 'detractor') detractores++;
-    if (r.score_experiencia != null) { sumExp  += r.score_experiencia; cntExp++;  }
-    if (r.score_productos   != null) { sumProd += r.score_productos;   cntProd++; }
-    if (r.score_precios     != null) { sumPrec += r.score_precios;     cntPrec++; }
-    if (r.score_atencion    != null) { sumAten += r.score_atencion;    cntAten++; }
   }
   const total = rows.length;
   const nps   = total > 0 ? Math.round(((promotores - detractores) / total) * 100) : 0;
-  const avg   = (s: number, c: number) => c > 0 ? Math.round((s / c) * 10) / 10 : null;
-  return { total, promotores, pasivos, detractores, nps,
-    avgExp: avg(sumExp, cntExp), avgProd: avg(sumProd, cntProd),
-    avgPrec: avg(sumPrec, cntPrec), avgAten: avg(sumAten, cntAten) };
+  return {
+    total, promotores, pasivos, detractores, nps,
+    avgExp:  avgOf(rows.map(r => r.score_experiencia)),
+    avgProd: avgOf(rows.map(r => r.score_productos)),
+    avgPrec: avgOf(rows.map(r => r.score_precios)),
+    avgAten: avgOf(rows.map(r => r.score_atencion)),
+  };
 }
 
-function calcAspectos(rows: Row[]) {
+function calcAspectos(rows: Row[], total: number) {
   const counts: Record<string, number> = {};
   for (const r of rows) {
     if (!r.aspectos_mejorar) continue;
@@ -95,8 +77,8 @@ function calcAspectos(rows: Row[]) {
     }
   }
   return Object.entries(counts)
-    .map(([aspecto, total]) => ({ aspecto, total }))
-    .sort((a, b) => b.total - a.total);
+    .map(([aspecto, n]) => ({ aspecto, n, pct: total > 0 ? Math.round((n/total)*100) : 0 }))
+    .sort((a, b) => b.n - a.n);
 }
 
 function calcBySucursal(rows: Row[]) {
@@ -108,39 +90,36 @@ function calcBySucursal(rows: Row[]) {
   }
   return Array.from(map.entries()).map(([code, { name, rows }]) => {
     const m = calcMetrics(rows);
-    const avgScore = rows.reduce((s, r) => s + r.score, 0) / rows.length;
-    return { code, name, total: m.total, avgScore: Math.round(avgScore * 10) / 10, nps: m.nps,
-      promotores: m.promotores, detractores: m.detractores };
+    return {
+      code, name, total: m.total, nps: m.nps,
+      avgScore: avgOf(rows.map(r => r.score)),
+      avgExp:   m.avgExp, avgProd: m.avgProd, avgPrec: m.avgPrec, avgAten: m.avgAten,
+      promotores: m.promotores, detractores: m.detractores,
+    };
   }).sort((a, b) => b.total - a.total);
 }
 
-/* ─── NPS Gauge (SVG) ─── */
+/* ─── NPS Gauge ─── */
 function Gauge({ nps, total }: { nps: number; total: number }) {
   const cx = 130, cy = 148, R = 100, sw = 20;
   const clamped = Math.max(-100, Math.min(100, nps));
   const toRad = (d: number) => (d * Math.PI) / 180;
-  const pt = (deg: number, r: number): [number, number] => [
-    cx + r * Math.cos(toRad(deg)), cy - r * Math.sin(toRad(deg)),
-  ];
+  const pt = (deg: number, r: number): [number, number] => [cx + r*Math.cos(toRad(deg)), cy - r*Math.sin(toRad(deg))];
   const arc = (a: number, b: number, r: number) => {
-    const [x1,y1] = pt(a,r); const [x2,y2] = pt(b,r);
+    const [x1,y1]=pt(a,r); const [x2,y2]=pt(b,r);
     return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${Math.abs(a-b)>180?1:0} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
   };
-  const needleDeg = 180 - ((clamped + 100) / 200) * 180;
-  const [nx, ny] = pt(needleDeg, R - 10);
+  const needleDeg = 180 - ((clamped+100)/200)*180;
+  const [nx,ny] = pt(needleDeg, R-10);
   const color = nps >= 50 ? '#22c55e' : nps >= 0 ? '#f59e0b' : '#ef4444';
-  const [lx,ly] = pt(180, R+sw+6); const [mx,my] = pt(90, R+sw+6); const [rx,ry] = pt(0, R+sw+6);
-
+  const [lx,ly]=pt(180,R+sw+6); const [mx,my]=pt(90,R+sw+6); const [rx,ry]=pt(0,R+sw+6);
   return (
     <svg width={260} height={168} viewBox="0 0 260 168" className="mx-auto">
       <path d={arc(180,90,R)} fill="none" stroke="#ef4444" strokeWidth={sw} strokeLinecap="butt" opacity={0.15}/>
       <path d={arc(90,45,R)}  fill="none" stroke="#f59e0b" strokeWidth={sw} strokeLinecap="butt" opacity={0.15}/>
       <path d={arc(45,0,R)}   fill="none" stroke="#22c55e" strokeWidth={sw} strokeLinecap="butt" opacity={0.15}/>
-      {total > 0 && <path d={arc(180, needleDeg, R)} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" opacity={0.9}/>}
-      {[90,45].map(deg => {
-        const [x1,y1] = pt(deg, R-sw/2-2); const [x2,y2] = pt(deg, R+sw/2+2);
-        return <line key={deg} x1={x1.toFixed(2)} y1={y1.toFixed(2)} x2={x2.toFixed(2)} y2={y2.toFixed(2)} stroke="white" strokeWidth={2}/>;
-      })}
+      {total > 0 && <path d={arc(180,needleDeg,R)} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" opacity={0.9}/>}
+      {[90,45].map(deg => { const [x1,y1]=pt(deg,R-sw/2-2); const [x2,y2]=pt(deg,R+sw/2+2); return <line key={deg} x1={x1.toFixed(2)} y1={y1.toFixed(2)} x2={x2.toFixed(2)} y2={y2.toFixed(2)} stroke="white" strokeWidth={2}/>; })}
       <line x1={cx} y1={cy} x2={nx.toFixed(2)} y2={ny.toFixed(2)} stroke={UAA_PURPLE} strokeWidth={3.5} strokeLinecap="round"/>
       <circle cx={cx} cy={cy} r={7} fill={UAA_PURPLE}/><circle cx={cx} cy={cy} r={3} fill="white"/>
       <text x={lx.toFixed(2)} y={(ly+4).toFixed(2)} textAnchor="middle" fontSize={10} fill="#9ca3af" fontFamily="sans-serif">−100</text>
@@ -148,12 +127,8 @@ function Gauge({ nps, total }: { nps: number; total: number }) {
       <text x={rx.toFixed(2)} y={(ry+4).toFixed(2)} textAnchor="middle" fontSize={10} fill="#9ca3af" fontFamily="sans-serif">+100</text>
       {total > 0 ? (
         <>
-          <text x={cx} y={cy-26} textAnchor="middle" fontSize={32} fontWeight="bold" fill={color} fontFamily="sans-serif">
-            {nps > 0 ? `+${nps}` : nps}
-          </text>
-          <text x={cx} y={cy-10} textAnchor="middle" fontSize={9} fill="#9ca3af" fontFamily="sans-serif">
-            (promotores − detractores) / total
-          </text>
+          <text x={cx} y={cy-26} textAnchor="middle" fontSize={32} fontWeight="bold" fill={color} fontFamily="sans-serif">{nps>0?`+${nps}`:nps}</text>
+          <text x={cx} y={cy-10} textAnchor="middle" fontSize={9} fill="#9ca3af" fontFamily="sans-serif">(promotores − detractores) / total</text>
         </>
       ) : (
         <text x={cx} y={cy-18} textAnchor="middle" fontSize={13} fill="#d1d5db" fontFamily="sans-serif">Sin datos</text>
@@ -169,74 +144,78 @@ function ScoreBar({ label, value }: { label: string; value: number | null }) {
     <div className="flex items-center gap-3">
       <span className="text-xs text-muted-foreground w-24 shrink-0">{label}</span>
       <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-500"
-             style={{ width: `${(v/5)*100}%`, background: UAA_PURPLE }}/>
+        <div className="h-full rounded-full transition-all" style={{ width:`${(v/5)*100}%`, background: UAA_PURPLE }}/>
       </div>
       <span className="text-xs font-semibold w-8 text-right">{v > 0 ? v : '—'}</span>
     </div>
   );
 }
 
-/* ─── Aspecto bar ─── */
-function AspectoBar({ label, value, max }: { label: string; value: number; max: number }) {
-  const pct = max > 0 ? (value/max)*100 : 0;
-  const good = label.toLowerCase().includes('conforme');
+/* ─── Aspecto bar (with %) ─── */
+function AspectoBar({ aspecto, n, pct, max }: { aspecto: string; n: number; pct: number; max: number }) {
+  const barPct = max > 0 ? (n/max)*100 : 0;
+  const good = aspecto.toLowerCase().includes('conforme');
+  const color = good ? '#22c55e' : UAA_PURPLE;
   return (
     <div className="flex items-center gap-3">
-      <span className="text-xs text-muted-foreground w-52 shrink-0 truncate" title={label}>{label}</span>
+      <span className="text-xs text-muted-foreground w-52 shrink-0 truncate" title={aspecto}>{aspecto}</span>
       <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-500"
-             style={{ width: `${pct}%`, background: good ? '#22c55e' : UAA_PURPLE }}/>
+        <div className="h-full rounded-full transition-all" style={{ width:`${barPct}%`, background: color }}/>
       </div>
-      <span className="text-xs font-bold w-8 text-right" style={{ color: good ? '#22c55e' : UAA_PURPLE }}>{value}</span>
+      <span className="text-xs font-bold w-20 text-right whitespace-nowrap" style={{ color }}>
+        {n} <span className="text-muted-foreground font-normal">({pct}%)</span>
+      </span>
     </div>
   );
 }
 
 /* ─── Classification badge ─── */
 function ClasifBadge({ c }: { c: string }) {
-  if (c === 'promotor')  return <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-0">Promotor</Badge>;
-  if (c === 'pasivo')    return <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100 border-0">Pasivo</Badge>;
-  if (c === 'detractor') return <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-0">Detractor</Badge>;
-  return <Badge variant="secondary">{c}</Badge>;
+  if (c === 'promotor')  return <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-0 text-xs">Promotor</Badge>;
+  if (c === 'pasivo')    return <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100 border-0 text-xs">Pasivo</Badge>;
+  if (c === 'detractor') return <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-0 text-xs">Detractor</Badge>;
+  return <Badge variant="secondary" className="text-xs">{c}</Badge>;
 }
 
-/* ─── Stars ─── */
 function Stars({ n }: { n: number }) {
-  return (
-    <span className="text-amber-400 tracking-tight">
-      {'★'.repeat(Math.max(0,n))}{'☆'.repeat(Math.max(0,5-n))}
-    </span>
-  );
+  return <span className="text-amber-400 tracking-tight">{'★'.repeat(Math.max(0,n))}{'☆'.repeat(Math.max(0,5-n))}</span>;
 }
 
-/* ─── NPS trend chip ─── */
 function NpsTrend({ nps }: { nps: number }) {
   if (nps >= 50) return <span className="inline-flex items-center gap-1 text-green-600 text-xs font-semibold"><TrendingUp className="w-3 h-3"/>Bueno</span>;
   if (nps >= 0)  return <span className="inline-flex items-center gap-1 text-yellow-600 text-xs font-semibold"><Minus className="w-3 h-3"/>Neutro</span>;
   return <span className="inline-flex items-center gap-1 text-red-500 text-xs font-semibold"><TrendingDown className="w-3 h-3"/>Crítico</span>;
 }
 
+/* ─── Compact score cell ─── */
+function ScoreCell({ value }: { value: number | null }) {
+  if (value == null) return <span className="text-muted-foreground text-xs">—</span>;
+  const color = value >= 4 ? 'text-green-600' : value >= 3 ? 'text-yellow-600' : 'text-red-500';
+  return <span className={`text-xs font-semibold ${color}`}>{value}</span>;
+}
+
 /* ════════════════════════════════════════════
    MAIN CLIENT COMPONENT
 ═════════════════════════════════════════════ */
-export default function DashboardClient({ rows, email }: { rows: Row[]; email: string }) {
-
-  /* ── Filter state ── */
-  const [sucursal, setSucursalRaw]  = useState('');
+export default function DashboardClient({
+  rows, email, enviados, sucursalesAll,
+}: {
+  rows: Row[];
+  email: string;
+  enviados: number;
+  sucursalesAll: { code: string; name: string }[];
+}) {
+  const [sucursal, setSucursalRaw] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
 
-  function setSucursal(v: string) {
-    setSucursalRaw(v);
-    setSelectedDate(''); // reset date on sucursal change
-  }
+  function setSucursal(v: string) { setSucursalRaw(v); setSelectedDate(''); }
 
-  /* ── Derived data ── */
+  /* ── Sucursal dropdown: ref_sucursal + those actually in data ── */
   const sucursales = useMemo(() => {
-    const map = new Map<string, string>();
-    rows.forEach(r => { if (r.c_sucursal && r.sucursal_nombre) map.set(r.c_sucursal, r.sucursal_nombre); });
-    return Array.from(map.entries()).map(([code, name]) => ({ code, name })).sort((a,b) => a.name.localeCompare(b.name));
-  }, [rows]);
+    const inData = new Set(rows.filter(r => r.c_sucursal).map(r => r.c_sucursal!));
+    // include all from ref_sucursal that have responses OR all from ref_sucursal
+    return sucursalesAll.filter(s => inData.has(s.code));
+  }, [rows, sucursalesAll]);
 
   const bySucursal = useMemo(() =>
     sucursal ? rows.filter(r => r.c_sucursal === sucursal) : rows,
@@ -253,23 +232,24 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
     [bySucursal, selectedDate]);
 
   const metrics    = useMemo(() => calcMetrics(filtered), [filtered]);
-  const aspectos   = useMemo(() => calcAspectos(filtered), [filtered]);
-  const sucBrkdwn  = useMemo(() => calcBySucursal(rows), [rows]); // always all rows for the breakdown
+  const aspectos   = useMemo(() => calcAspectos(filtered, metrics.total), [filtered, metrics.total]);
+  const sucBrkdwn  = useMemo(() => calcBySucursal(rows), [rows]); // always all data
   const comentarios = useMemo(() => filtered.filter(r => r.comentario?.trim()), [filtered]);
   const recientes   = filtered.slice(0, 10);
-  const maxAspecto  = aspectos.length > 0 ? aspectos[0].total : 1;
+  const maxAspecto  = aspectos.length > 0 ? aspectos[0].n : 1;
 
-  const { total, promotores, pasivos, detractores, nps,
-          avgExp, avgProd, avgPrec, avgAten } = metrics;
+  const { total, promotores, pasivos, detractores, nps, avgExp, avgProd, avgPrec, avgAten } = metrics;
 
-  const sucursalLabel = sucursal
-    ? (sucursales.find(s => s.code === sucursal)?.name ?? sucursal)
-    : null;
+  // Response rate (global: total responses in filtered / total sent)
+  const tasaNum = rows.filter(r => r.cliente_id > 0).length; // non-demo responses total
+  const tasaPct = enviados > 0 ? Math.round((tasaNum / enviados) * 100) : 0;
+
+  const sucursalLabel = sucursal ? (sucursales.find(s => s.code === sucursal)?.name ?? sucursal) : null;
 
   return (
     <div className="min-h-screen bg-muted/30">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="w-full py-3.5 px-6 flex items-center justify-between shadow-sm" style={{ background: UAA_PURPLE }}>
         <div className="flex items-center gap-4">
           <Image src="/logo-clubuaa.png" alt="Club UAA" width={110} height={40} style={{ objectFit: 'contain' }}/>
@@ -290,7 +270,7 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
 
       <div className="max-w-7xl mx-auto px-4 py-6">
 
-        {/* ── Filters bar ── */}
+        {/* Filters bar */}
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <div className="flex items-center gap-1.5">
             <MapPin className="w-3.5 h-3.5 text-muted-foreground"/>
@@ -330,13 +310,10 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
               Limpiar filtros
             </button>
           )}
-
-          <div className="ml-auto text-xs text-muted-foreground">
-            {total} respuesta{total !== 1 ? 's' : ''}
-          </div>
+          <div className="ml-auto text-xs text-muted-foreground">{total} respuesta{total !== 1 ? 's' : ''}</div>
         </div>
 
-        {/* ── Tabs ── */}
+        {/* Tabs */}
         <Tabs defaultValue="resumen">
           <TabsList className="mb-6 bg-white border border-border shadow-sm h-9">
             <TabsTrigger value="resumen" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
@@ -346,12 +323,9 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
               <MapPin className="w-3.5 h-3.5 mr-1.5"/>Por Sucursal
             </TabsTrigger>
             <TabsTrigger value="comentarios" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              <MessageSquare className="w-3.5 h-3.5 mr-1.5"/>
-              Comentarios
+              <MessageSquare className="w-3.5 h-3.5 mr-1.5"/>Comentarios
               {comentarios.length > 0 && (
-                <span className="ml-1.5 bg-primary/20 text-primary rounded-full px-1.5 py-0 text-[10px] font-bold">
-                  {comentarios.length}
-                </span>
+                <span className="ml-1.5 bg-primary/20 text-primary rounded-full px-1.5 text-[10px] font-bold">{comentarios.length}</span>
               )}
             </TabsTrigger>
           </TabsList>
@@ -359,19 +333,20 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
           {/* ════ TAB: RESUMEN ════ */}
           <TabsContent value="resumen" className="space-y-5">
 
-            {/* KPI cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 5 KPI cards */}
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
               {[
-                { label: 'Total respuestas', value: total,       sub: 'encuestas recibidas',  color: UAA_PURPLE, icon: <BarChart3 className="w-4 h-4"/> },
-                { label: 'Promotores',       value: promotores,  sub: `${total > 0 ? Math.round(promotores/total*100) : 0}% del total`, color: '#22c55e', icon: <TrendingUp className="w-4 h-4"/> },
-                { label: 'Pasivos',          value: pasivos,     sub: `${total > 0 ? Math.round(pasivos/total*100) : 0}% del total`,    color: '#f59e0b', icon: <Minus className="w-4 h-4"/> },
-                { label: 'Detractores',      value: detractores, sub: `${total > 0 ? Math.round(detractores/total*100) : 0}% del total`, color: '#ef4444', icon: <TrendingDown className="w-4 h-4"/> },
+                { label: 'Total respuestas', value: String(total),       sub: 'encuestas recibidas',                  color: UAA_PURPLE, icon: <BarChart3 className="w-4 h-4"/> },
+                { label: 'Promotores',       value: String(promotores),  sub: `${total > 0 ? Math.round(promotores/total*100) : 0}% del total`, color: '#22c55e', icon: <TrendingUp className="w-4 h-4"/> },
+                { label: 'Pasivos',          value: String(pasivos),     sub: `${total > 0 ? Math.round(pasivos/total*100) : 0}% del total`,    color: '#f59e0b', icon: <Minus className="w-4 h-4"/> },
+                { label: 'Detractores',      value: String(detractores), sub: `${total > 0 ? Math.round(detractores/total*100) : 0}% del total`, color: '#ef4444', icon: <TrendingDown className="w-4 h-4"/> },
+                { label: 'Tasa de respuesta', value: `${tasaPct}%`,     sub: `${tasaNum} respuestas / ${enviados} enviados`, color: '#6366f1', icon: <Send className="w-4 h-4"/> },
               ].map(c => (
                 <Card key={c.label} className="shadow-sm border-border/60">
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between mb-3">
-                      <p className="text-xs text-muted-foreground font-medium">{c.label}</p>
-                      <span style={{ color: c.color }} className="opacity-70">{c.icon}</span>
+                      <p className="text-xs text-muted-foreground font-medium leading-tight">{c.label}</p>
+                      <span style={{ color: c.color }} className="opacity-70 shrink-0">{c.icon}</span>
                     </div>
                     <p className="text-3xl font-bold" style={{ color: c.color }}>{c.value}</p>
                     <p className="text-xs text-muted-foreground mt-1">{c.sub}</p>
@@ -430,11 +405,11 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
                 <CardHeader className="pb-0 pt-5 px-6">
                   <CardTitle className="text-sm font-semibold">
                     Aspectos por mejorar
-                    <span className="ml-2 text-muted-foreground font-normal text-xs">{aspectos.length} opciones</span>
+                    <span className="ml-2 text-muted-foreground font-normal text-xs">{aspectos.length} opciones · % sobre respuestas con esta opción</span>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-6 pb-5 pt-4 space-y-3">
-                  {aspectos.map(a => <AspectoBar key={a.aspecto} label={a.aspecto} value={a.total} max={maxAspecto}/>)}
+                  {aspectos.map(a => <AspectoBar key={a.aspecto} aspecto={a.aspecto} n={a.n} pct={a.pct} max={maxAspecto}/>)}
                 </CardContent>
               </Card>
             )}
@@ -455,24 +430,14 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap mb-0.5">
                             <ClasifBadge c={r.clasificacion}/>
-                            {r.sucursal_nombre && (
-                              <Badge variant="secondary" className="text-xs font-normal">
-                                {r.sucursal_nombre}
-                              </Badge>
-                            )}
-                            {r.cliente_id === 0 && (
-                              <Badge variant="outline" className="text-xs font-normal text-muted-foreground">demo</Badge>
-                            )}
+                            {r.sucursal_nombre && <Badge variant="secondary" className="text-xs font-normal">{r.sucursal_nombre}</Badge>}
+                            {r.cliente_id === 0 && <Badge variant="outline" className="text-xs font-normal text-muted-foreground">demo</Badge>}
                           </div>
                           <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground mt-0.5">
-                            <span>Respuesta: {fmtRespondidoAt(r.respondido_at)}</span>
-                            {r.fecha_compra && (
-                              <span>Compra: {r.fecha_compra}{r.hora_compra ? ` ${r.hora_compra}` : ''}</span>
-                            )}
+                            <span>Respuesta: {fmtAt(r.respondido_at)}</span>
+                            {r.fecha_compra && <span>Compra: {r.fecha_compra}{r.hora_compra ? ` ${r.hora_compra}` : ''}</span>}
                           </div>
-                          {r.comentario && (
-                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{r.comentario}</p>
-                          )}
+                          {r.comentario && <p className="text-xs text-muted-foreground mt-0.5 truncate">{r.comentario}</p>}
                         </div>
                       </div>
                     ))}
@@ -489,26 +454,27 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
                 <CardTitle className="text-sm font-semibold">
                   Rendimiento por sucursal
                   <span className="ml-2 text-muted-foreground font-normal text-xs">
-                    {selectedDate ? dateLabel(selectedDate) : 'Todas las fechas'} · {sucBrkdwn.length} sucursales
+                    {sucBrkdwn.length} sucursales · clic en fila para filtrar
                   </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-0 pb-0 pt-3">
                 {sucBrkdwn.length === 0 ? (
-                  <p className="px-6 py-8 text-sm text-muted-foreground text-center">
-                    Sin datos de sucursal. Los clientes demo no tienen sucursal asignada.
-                  </p>
+                  <p className="px-6 py-8 text-sm text-muted-foreground text-center">Sin datos de sucursal disponibles.</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow className="border-border/40 hover:bg-transparent">
-                          <TableHead className="text-xs font-semibold pl-6">Sucursal</TableHead>
-                          <TableHead className="text-xs font-semibold text-center">Respuestas</TableHead>
-                          <TableHead className="text-xs font-semibold text-center">Score prom.</TableHead>
+                          <TableHead className="text-xs font-semibold pl-6 min-w-[160px]">Sucursal</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Resp.</TableHead>
                           <TableHead className="text-xs font-semibold text-center">NPS</TableHead>
-                          <TableHead className="text-xs font-semibold text-center">Promotores</TableHead>
-                          <TableHead className="text-xs font-semibold text-center">Detractores</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Score★</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Experiencia</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Productos</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Precios</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Atención</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Prom. / Det.</TableHead>
                           <TableHead className="text-xs font-semibold pr-6">Tendencia</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -519,42 +485,34 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
                             className="border-border/30 cursor-pointer hover:bg-muted/40 transition-colors"
                             onClick={() => setSucursal(sucursal === s.code ? '' : s.code)}
                           >
-                            <TableCell className="pl-6 py-3">
+                            <TableCell className="pl-6 py-2.5">
                               <div className="flex items-center gap-2">
-                                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center shrink-0">
-                                  {i + 1}
-                                </span>
+                                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center shrink-0">{i+1}</span>
                                 <span className="text-sm font-medium">{s.name}</span>
-                                {sucursal === s.code && (
-                                  <Badge className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-0 hover:bg-primary/10">
-                                    activa
-                                  </Badge>
-                                )}
+                                {sucursal === s.code && <Badge className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-0 hover:bg-primary/10">activa</Badge>}
                               </div>
                             </TableCell>
-                            <TableCell className="text-center">
+                            <TableCell className="text-center py-2.5">
                               <span className="text-sm font-bold" style={{ color: UAA_PURPLE }}>{s.total}</span>
                             </TableCell>
-                            <TableCell className="text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <Stars n={Math.round(s.avgScore)}/>
-                                <span className="text-xs text-muted-foreground">{s.avgScore}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center">
+                            <TableCell className="text-center py-2.5">
                               <span className={`text-sm font-bold ${s.nps >= 50 ? 'text-green-600' : s.nps >= 0 ? 'text-yellow-600' : 'text-red-500'}`}>
                                 {s.nps > 0 ? `+${s.nps}` : s.nps}
                               </span>
                             </TableCell>
-                            <TableCell className="text-center">
-                              <span className="text-sm font-medium text-green-600">{s.promotores}</span>
+                            <TableCell className="text-center py-2.5">
+                              <ScoreCell value={s.avgScore}/>
                             </TableCell>
-                            <TableCell className="text-center">
-                              <span className="text-sm font-medium text-red-500">{s.detractores}</span>
+                            <TableCell className="text-center py-2.5"><ScoreCell value={s.avgExp}/></TableCell>
+                            <TableCell className="text-center py-2.5"><ScoreCell value={s.avgProd}/></TableCell>
+                            <TableCell className="text-center py-2.5"><ScoreCell value={s.avgPrec}/></TableCell>
+                            <TableCell className="text-center py-2.5"><ScoreCell value={s.avgAten}/></TableCell>
+                            <TableCell className="text-center py-2.5">
+                              <span className="text-xs text-green-600 font-medium">{s.promotores}</span>
+                              <span className="text-xs text-muted-foreground mx-0.5">/</span>
+                              <span className="text-xs text-red-500 font-medium">{s.detractores}</span>
                             </TableCell>
-                            <TableCell className="pr-6">
-                              <NpsTrend nps={s.nps}/>
-                            </TableCell>
+                            <TableCell className="pr-6 py-2.5"><NpsTrend nps={s.nps}/></TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -570,8 +528,7 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
             <Card className="shadow-sm border-border/60">
               <CardHeader className="pb-0 pt-5 px-6">
                 <CardTitle className="text-sm font-semibold">
-                  Comentarios
-                  <span className="ml-2 text-muted-foreground font-normal text-xs">{comentarios.length} con texto</span>
+                  Comentarios <span className="ml-2 text-muted-foreground font-normal text-xs">{comentarios.length} con texto</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-0 pb-0 pt-3">
@@ -585,7 +542,7 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
                           <TableHead className="text-xs font-semibold pl-6 w-36">Cliente</TableHead>
                           <TableHead className="text-xs font-semibold w-32">Sucursal</TableHead>
                           <TableHead className="text-xs font-semibold w-28">Compra</TableHead>
-                          <TableHead className="text-xs font-semibold w-28">Respuesta</TableHead>
+                          <TableHead className="text-xs font-semibold w-32">Respuesta</TableHead>
                           <TableHead className="text-xs font-semibold w-24">Score</TableHead>
                           <TableHead className="text-xs font-semibold pr-6">Comentario</TableHead>
                         </TableRow>
@@ -594,41 +551,27 @@ export default function DashboardClient({ rows, email }: { rows: Row[]; email: s
                         {comentarios.map((r, i) => (
                           <TableRow key={i} className="border-border/30 hover:bg-muted/30 align-top">
                             <TableCell className="pl-6 py-3 align-top">
-                              {r.nombre_cliente ? (
-                                <span className="text-xs font-medium">{r.nombre_cliente}</span>
-                              ) : r.cliente_id === 0 ? (
-                                <span className="text-xs text-muted-foreground italic">Demo</span>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">ID {r.cliente_id}</span>
-                              )}
+                              {r.nombre_cliente
+                                ? <span className="text-xs font-medium">{r.nombre_cliente}</span>
+                                : r.cliente_id === 0
+                                  ? <span className="text-xs text-muted-foreground italic">Demo</span>
+                                  : <span className="text-xs text-muted-foreground">ID {r.cliente_id}</span>}
                             </TableCell>
                             <TableCell className="align-top py-3">
-                              {r.sucursal_nombre ? (
-                                <Badge variant="secondary" className="text-xs font-normal whitespace-nowrap">
-                                  {r.sucursal_nombre}
-                                </Badge>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
+                              {r.sucursal_nombre
+                                ? <Badge variant="secondary" className="text-xs font-normal whitespace-nowrap">{r.sucursal_nombre}</Badge>
+                                : <span className="text-xs text-muted-foreground">—</span>}
                             </TableCell>
                             <TableCell className="align-top py-3">
-                              {r.fecha_compra ? (
-                                <div>
-                                  <p className="text-xs">{r.fecha_compra}</p>
-                                  {r.hora_compra && <p className="text-xs text-muted-foreground">{r.hora_compra}</p>}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
+                              {r.fecha_compra
+                                ? <div><p className="text-xs">{r.fecha_compra}</p>{r.hora_compra && <p className="text-xs text-muted-foreground">{r.hora_compra}</p>}</div>
+                                : <span className="text-xs text-muted-foreground">—</span>}
                             </TableCell>
                             <TableCell className="align-top py-3">
-                              <p className="text-xs whitespace-nowrap">{fmtRespondidoAt(r.respondido_at)}</p>
+                              <p className="text-xs whitespace-nowrap">{fmtAt(r.respondido_at)}</p>
                             </TableCell>
                             <TableCell className="align-top py-3">
-                              <div className="flex flex-col gap-1">
-                                <Stars n={r.score}/>
-                                <ClasifBadge c={r.clasificacion}/>
-                              </div>
+                              <div className="flex flex-col gap-1"><Stars n={r.score}/><ClasifBadge c={r.clasificacion}/></div>
                             </TableCell>
                             <TableCell className="align-top py-3 pr-6 max-w-xs">
                               <p className="text-xs text-foreground leading-relaxed">{r.comentario}</p>
