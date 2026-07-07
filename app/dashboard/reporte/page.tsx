@@ -30,10 +30,34 @@ function dateKey(iso: string): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
+function isMonday(fecha: string): boolean {
+  const [y, m, d] = fecha.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 1;
+}
+
+function prevDay(fecha: string): string {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+function dFmt(fecha: string): string {
+  const [y, m, d] = fecha.split('-').map(Number);
+  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+}
+
 function fechaLabel(fecha: string): string {
   const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
   const [y, m, d] = fecha.split('-').map(Number);
   return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y} — ${DIAS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}`;
+}
+
+// Cuando es lunes, agrupa Dom + Lun como un solo período
+function ayerLabel(fecha: string): string {
+  if (!isMonday(fecha)) return fechaLabel(fecha);
+  const dom = prevDay(fecha);
+  return `Dom ${dFmt(dom)} + Lun ${dFmt(fecha)} (fin de semana)`;
 }
 
 function avg(nums: (number | null)[]): number | null {
@@ -55,6 +79,10 @@ type Row = {
 async function fetchData(fechaAyer: string) {
   const pool = await getPool();
 
+  // Si es lunes, los enviados del "período" son los del domingo
+  // (el sábado se compra, el domingo se envía la encuesta, el lunes no se envía nada)
+  const fechaEnviados = isMonday(fechaAyer) ? prevDay(fechaAyer) : fechaAyer;
+
   const [npsResult, enviadosTotalRes, enviadosAyerRes, [sucursalRows]] = await Promise.all([
     pool.request().query(`
       SELECT score, clasificacion, comentario, canal,
@@ -65,7 +93,7 @@ async function fetchData(fechaAyer: string) {
       ORDER BY respondido_at DESC
     `),
     pool.request().query(`SELECT COUNT(*) AS enviados FROM nps_enviar WHERE fh_enviometa IS NOT NULL`),
-    pool.request().input('fecha', fechaAyer).query(`
+    pool.request().input('fecha', fechaEnviados).query(`
       SELECT COUNT(*) AS enviados FROM nps_enviar
       WHERE fh_enviometa IS NOT NULL AND CAST(fh_enviometa AS DATE) = @fecha
     `),
@@ -248,7 +276,15 @@ export default async function ReportePage({
   const { fecha: fechaParam } = await searchParams;
   const fecha = fechaParam ?? getYesterdayArg();
 
-  const { allRows, ayerRows, enviadosTotal, enviadosAyer } = await fetchData(fecha);
+  const { allRows, enviadosTotal, enviadosAyer } = await fetchData(fecha);
+
+  // Si es lunes, el período "ayer" abarca Dom + Lun
+  const esLunes = isMonday(fecha);
+  const fechaDomingo = esLunes ? prevDay(fecha) : null;
+  const ayerRows = allRows.filter(r => {
+    const dk = dateKey(r.respondido_at);
+    return dk === fecha || (esLunes && dk === fechaDomingo);
+  });
 
   // Acumulado
   const acc = calcMetrics(allRows);
@@ -291,8 +327,15 @@ export default async function ReportePage({
           <span className="text-sm font-semibold text-gray-700">Reporte NPS — Acumulado</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-400 hidden sm:inline">Comentarios de:</span>
+          <span className="text-xs text-gray-400 hidden sm:inline">
+            {esLunes ? 'Período Dom+Lun:' : 'Comentarios de:'}
+          </span>
           <DateNav fecha={fecha} />
+          {esLunes && (
+            <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md hidden sm:inline">
+              Dom {dFmt(fechaDomingo!)} + Lun {dFmt(fecha)}
+            </span>
+          )}
         </div>
       </div>
 
@@ -318,7 +361,7 @@ export default async function ReportePage({
         {/* ── Resumen de ayer (poca importancia) ── */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-6">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-            Ayer — {fechaLabel(fecha)}
+            {ayerLabel(fecha)}
           </p>
           <div className="flex flex-wrap gap-6">
             <div>
@@ -472,7 +515,7 @@ export default async function ReportePage({
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Comentarios — {fechaLabel(fecha)}
+                Comentarios — {ayerLabel(fecha)}
               </p>
               <span className="text-xs text-gray-400">{comentarios.length} comentario{comentarios.length !== 1 ? 's' : ''}</span>
             </div>
