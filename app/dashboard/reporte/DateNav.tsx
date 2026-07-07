@@ -2,35 +2,64 @@
 
 import { useRouter } from 'next/navigation';
 
-const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+/* ── Helpers (duplicados del server — no se puede importar desde page.tsx) ── */
+function isoDate(dt: Date): string {
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+function dFmt(fecha: string): string {
+  const [, m, d] = fecha.split('-');
+  return `${d}/${m}`;
+}
+function anchorDay(fecha: string): number {
+  const [y, m, d] = fecha.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+function prevAnchor(fecha: string): string {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const day = dt.getUTCDay();
+  dt.setUTCDate(dt.getUTCDate() + (day === 1 ? -4 : day === 4 ? -3 : -1));
+  return isoDate(dt);
+}
+function nextAnchor(fecha: string): string {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const day = dt.getUTCDay();
+  dt.setUTCDate(dt.getUTCDate() + (day === 1 ? 3 : day === 4 ? 4 : 1));
+  return isoDate(dt);
+}
+function off(fecha: string, days: number): string {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return isoDate(dt);
+}
+function periodLabel(fecha: string): string {
+  const day = anchorDay(fecha);
+  const y = fecha.split('-')[0];
+  if (day === 1) return `Vie ${dFmt(off(fecha, -3))} — Dom ${dFmt(off(fecha, -1))}/${y}`;
+  if (day === 4) return `Mar ${dFmt(off(fecha, -2))} — Jue ${dFmt(fecha)}/${y}`;
+  return `${dFmt(fecha)}/${y}`;
+}
 
 export default function DateNav({ fecha }: { fecha: string }) {
   const router = useRouter();
+  const go = (f: string) => router.push(`/dashboard/reporte?fecha=${f}`);
 
-  function navigate(days: number) {
-    const d = new Date(fecha + 'T12:00:00Z');
-    d.setUTCDate(d.getUTCDate() + days);
-    const next = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-    router.push(`/dashboard/reporte?fecha=${next}`);
-  }
-
-  const [y, m, d] = fecha.split('-').map(Number);
-  const dayName = DIAS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
-  const label = `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y} — ${dayName}`;
-
-  const btnBase =
-    'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors bg-white border-gray-200 text-gray-600 hover:bg-gray-50 active:bg-gray-100';
+  const btn = 'h-8 px-3 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition-colors';
 
   return (
-    <div className="flex flex-wrap items-center gap-2 print:hidden">
-      <button onClick={() => navigate(-1)} className={btnBase}>← Anterior</button>
-      <span className="text-sm font-semibold text-gray-700 px-2">{label}</span>
-      <button onClick={() => navigate(1)} className={btnBase}>Siguiente →</button>
+    <div className="flex items-center gap-2 print:hidden">
+      <button className={btn} onClick={() => go(prevAnchor(fecha))}>← Anterior</button>
+      <span className="text-xs font-semibold text-gray-800 min-w-[220px] text-center px-1 tabular-nums">
+        {periodLabel(fecha)}
+      </span>
+      <button className={btn} onClick={() => go(nextAnchor(fecha))}>Siguiente →</button>
       <button
+        className="h-8 px-4 rounded-lg text-xs font-semibold bg-[#3b1f8c] text-white hover:bg-[#2e1870] transition-colors ml-2"
         onClick={() => window.print()}
-        className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#3b1f8c] text-white hover:bg-[#2e1870] transition-colors ml-2"
       >
-        Descargar PDF
+        ↓ Descargar PDF
       </button>
     </div>
   );

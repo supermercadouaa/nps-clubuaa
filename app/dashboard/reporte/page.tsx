@@ -10,61 +10,100 @@ import { getPool } from '@/lib/mssql';
 import mysqlPool from '@/lib/mysql';
 import DateNav from './DateNav';
 
-const UAA_PURPLE = '#3b1f8c';
+const P = '#3b1f8c';   // UAA purple
+const G = '#16a34a';   // green  (promotor)
+const A = '#ca8a04';   // amber  (pasivo)
+const R = '#dc2626';   // red    (detractor)
 
-/* ─── Helpers ─── */
+/* ─────────────────────── Helpers ─────────────────────── */
 function normCode(raw: string | null | undefined): string | null {
   if (raw == null) return null;
   const t = String(raw).trim();
   return t.replace(/^0+/, '') || '0';
 }
-
-function getYesterdayArg(): string {
-  const now = new Date(Date.now() - 3 * 60 * 60 * 1000);
-  now.setUTCDate(now.getUTCDate() - 1);
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
-}
-
-function dateKey(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-}
-
-function isMonday(fecha: string): boolean {
-  const [y, m, d] = fecha.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 1;
-}
-
-function prevDay(fecha: string): string {
+function offsetDate(fecha: string, days: number): string {
   const [y, m, d] = fecha.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() - 1);
+  dt.setUTCDate(dt.getUTCDate() + days);
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
 }
-
 function dFmt(fecha: string): string {
   const [y, m, d] = fecha.split('-').map(Number);
   return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
 }
-
-function fechaLabel(fecha: string): string {
-  const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+function dFmtShort(fecha: string): string {
+  const [, m, d] = fecha.split('-');
+  return `${d}/${m}`;
+}
+function dayName(fecha: string): string {
+  const N = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
   const [y, m, d] = fecha.split('-').map(Number);
-  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y} — ${DIAS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}`;
+  return N[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
 }
-
-// Cuando es lunes, agrupa Dom + Lun como un solo período
-function ayerLabel(fecha: string): string {
-  if (!isMonday(fecha)) return fechaLabel(fecha);
-  const dom = prevDay(fecha);
-  return `Dom ${dFmt(dom)} + Lun ${dFmt(fecha)} (fin de semana)`;
+function dayNum(fecha: string): number {
+  const [y, m, d] = fecha.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
-
+function dateKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
 function avg(nums: (number | null)[]): number | null {
   const v = nums.filter(n => n != null) as number[];
   return v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : null;
 }
 
+/* ─────────────────────── Period logic ─────────────────────── */
+type Period = {
+  dates: string[];
+  anchor: string;
+  rangeLabel: string;    // "Vie 04/07 — Dom 06/07/2026"
+  anchorLabel: string;   // "Lunes 07/07/2026"
+  dayNames: string[];    // ["Viernes","Sábado","Domingo"]
+};
+
+function getPeriod(anchor: string): Period {
+  const day = dayNum(anchor);
+  const DN = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const [y] = anchor.split('-');
+
+  if (day === 1) { // Lunes → Vie+Sáb+Dom
+    const dates = [offsetDate(anchor, -3), offsetDate(anchor, -2), offsetDate(anchor, -1)];
+    return {
+      dates, anchor,
+      rangeLabel: `Vie ${dFmtShort(dates[0])} — Dom ${dFmtShort(dates[2])}/${y}`,
+      anchorLabel: `${dayName(anchor)} ${dFmt(anchor)}`,
+      dayNames: ['Viernes','Sábado','Domingo'],
+    };
+  }
+  if (day === 4) { // Jueves → Mar+Mié+Jue
+    const dates = [offsetDate(anchor, -2), offsetDate(anchor, -1), anchor];
+    return {
+      dates, anchor,
+      rangeLabel: `Mar ${dFmtShort(dates[0])} — Jue ${dFmtShort(anchor)}/${y}`,
+      anchorLabel: `${dayName(anchor)} ${dFmt(anchor)}`,
+      dayNames: ['Martes','Miércoles','Jueves'],
+    };
+  }
+  // Otro día: solo ese día
+  return {
+    dates: [anchor], anchor,
+    rangeLabel: `${dayName(anchor)} ${dFmt(anchor)}`,
+    anchorLabel: `${dayName(anchor)} ${dFmt(anchor)}`,
+    dayNames: [dayName(anchor)],
+  };
+}
+
+function getDefaultAnchor(): string {
+  const now = new Date(Date.now() - 3 * 60 * 60 * 1000); // Argentina UTC-3
+  const day = now.getUTCDay();
+  // Días hacia atrás para llegar al Mon(1) o Thu(4) más reciente
+  const back = [3, 0, 1, 2, 0, 1, 2][day];
+  const dt = new Date(now.getTime() - back * 86400000);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+/* ─────────────────────── Types ─────────────────────── */
 type Row = {
   score: number; clasificacion: string; comentario: string | null; canal: string;
   cliente_id: number; ticket_id: number; respondido_at: string;
@@ -75,15 +114,16 @@ type Row = {
   c_sucursal: string | null; sucursal_nombre: string | null; nombre_cliente: string | null;
 };
 
-/* ─── Data fetch — trae TODO, filtra en JS ─── */
-async function fetchData(fechaAyer: string) {
+/* ─────────────────────── Fetch ─────────────────────── */
+async function fetchData(period: Period) {
   const pool = await getPool();
 
-  // Si es lunes, los enviados del "período" son los del domingo
-  // (el sábado se compra, el domingo se envía la encuesta, el lunes no se envía nada)
-  const fechaEnviados = isMonday(fechaAyer) ? prevDay(fechaAyer) : fechaAyer;
+  // Enviados del período con IN parametrizado
+  const reqEnv = pool.request();
+  period.dates.forEach((d, i) => reqEnv.input(`d${i}`, d));
+  const ph = period.dates.map((_, i) => `@d${i}`).join(', ');
 
-  const [npsResult, enviadosTotalRes, enviadosAyerRes, [sucursalRows]] = await Promise.all([
+  const [npsResult, envTotalRes, envPeriodRes, [sucursalRows]] = await Promise.all([
     pool.request().query(`
       SELECT score, clasificacion, comentario, canal,
              cliente_id, ticket_id, respondido_at,
@@ -92,23 +132,17 @@ async function fetchData(fechaAyer: string) {
       FROM nps_respuestas
       ORDER BY respondido_at DESC
     `),
-    pool.request().query(`SELECT COUNT(*) AS enviados FROM nps_enviar WHERE fh_enviometa IS NOT NULL`),
-    pool.request().input('fecha', fechaEnviados).query(`
-      SELECT COUNT(*) AS enviados FROM nps_enviar
-      WHERE fh_enviometa IS NOT NULL AND CAST(fh_enviometa AS DATE) = @fecha
-    `),
-    mysqlPool.query<RowDataPacket[]>(`
-      SELECT CAST(C_SUCURSAL AS CHAR) AS code, X_SUCURSAL AS name
-      FROM ref_sucursal ORDER BY X_SUCURSAL
-    `),
+    pool.request().query(`SELECT COUNT(*) AS n FROM nps_enviar WHERE fh_enviometa IS NOT NULL`),
+    reqEnv.query(`SELECT COUNT(*) AS n FROM nps_enviar WHERE fh_enviometa IS NOT NULL AND CAST(fh_enviometa AS DATE) IN (${ph})`),
+    mysqlPool.query<RowDataPacket[]>(`SELECT CAST(C_SUCURSAL AS CHAR) AS code, X_SUCURSAL AS name FROM ref_sucursal ORDER BY X_SUCURSAL`),
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const npsRows: any[] = npsResult.recordset;
-  const enviadosTotal: number = Number(enviadosTotalRes.recordset[0]?.enviados ?? 0);
-  const enviadosAyer: number  = Number(enviadosAyerRes.recordset[0]?.enviados ?? 0);
+  const envTotal: number  = Number(envTotalRes.recordset[0]?.n ?? 0);
+  const envPeriod: number = Number(envPeriodRes.recordset[0]?.n ?? 0);
 
-  const sucursalNameMap = new Map(
+  const sucMap = new Map(
     (sucursalRows as RowDataPacket[]).map(r => [normCode(String(r.code))!, String(r.name).trim()])
   );
 
@@ -117,7 +151,6 @@ async function fetchData(fechaAyer: string) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     npsRows.filter((r: any) => r.ticket_id > 0).map((r: any) => Number(r.ticket_id))
   )];
-
   const mysqlMap = new Map<number, {
     fecha_compra: string | null; hora_compra: string | null;
     c_sucursal: string | null; sucursal_nombre: string | null; nombre_cliente: string | null;
@@ -129,25 +162,25 @@ async function fetchData(fechaAyer: string) {
         ticket_id: number; fecha_compra: Date | null; hora_compra: string | null;
         c_sucursal: string | null; nombre_cliente: string | null;
       }
-      const ph = ticketIds.map(() => '?').join(', ');
+      const ph2 = ticketIds.map(() => '?').join(', ');
       const [rows] = await mysqlPool.query<MR[]>(`
-        SELECT t.c_idticket AS ticket_id, t.fechacorta AS fecha_compra,
-               t.horaticket AS hora_compra, CAST(t.c_sucursal AS CHAR) AS c_sucursal,
+        SELECT t.c_idticket AS ticket_id, t.fechacorta AS fecha_compra, t.horaticket AS hora_compra,
+               CAST(t.c_sucursal AS CHAR) AS c_sucursal,
                CONCAT(TRIM(COALESCE(c.x_nombres,'')), ' ', TRIM(COALESCE(c.x_apellidocli,''))) AS nombre_cliente
         FROM ticket_super t
         LEFT JOIN cliente_clubuaa c ON t.n_codcliente = c.c_cliente
-        WHERE t.c_idticket IN (${ph})
+        WHERE t.c_idticket IN (${ph2})
       `, ticketIds);
       for (const m of rows) {
         let fecha_compra: string | null = null;
         if (m.fecha_compra) {
-          const d = m.fecha_compra instanceof Date ? m.fecha_compra : new Date(String(m.fecha_compra));
-          fecha_compra = `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+          const dd = m.fecha_compra instanceof Date ? m.fecha_compra : new Date(String(m.fecha_compra));
+          fecha_compra = `${String(dd.getUTCDate()).padStart(2,'0')}/${String(dd.getUTCMonth()+1).padStart(2,'0')}/${dd.getUTCFullYear()}`;
         }
-        const cSucursal = normCode(m.c_sucursal);
+        const cs = normCode(m.c_sucursal);
         mysqlMap.set(Number(m.ticket_id), {
-          fecha_compra, hora_compra: m.hora_compra ?? null, c_sucursal: cSucursal,
-          sucursal_nombre: cSucursal ? (sucursalNameMap.get(cSucursal) ?? null) : null,
+          fecha_compra, hora_compra: m.hora_compra ?? null, c_sucursal: cs,
+          sucursal_nombre: cs ? (sucMap.get(cs) ?? null) : null,
           nombre_cliente: m.nombre_cliente?.trim() || null,
         });
       }
@@ -177,13 +210,14 @@ async function fetchData(fechaAyer: string) {
     };
   });
 
-  const ayerRows = allRows.filter(r => dateKey(r.respondido_at) === fechaAyer);
+  const periodSet = new Set(period.dates);
+  const periodRows = allRows.filter(r => periodSet.has(dateKey(r.respondido_at)));
 
-  return { allRows, ayerRows, enviadosTotal, enviadosAyer };
+  return { allRows, periodRows, envTotal, envPeriod };
 }
 
-/* ─── Metrics ─── */
-function calcMetrics(rows: Row[]) {
+/* ─────────────────────── Metrics ─────────────────────── */
+function calcM(rows: Row[]) {
   let p = 0, pa = 0, d = 0;
   for (const r of rows) {
     if (r.clasificacion === 'promotor') p++;
@@ -192,7 +226,7 @@ function calcMetrics(rows: Row[]) {
   }
   const n = rows.length;
   return {
-    total: n, promotores: p, pasivos: pa, detractores: d,
+    n, p, pa, d,
     nps: n > 0 ? Math.round(((p - d) / n) * 100) : 0,
     avgExp:  avg(rows.map(r => r.score_experiencia)),
     avgProd: avg(rows.map(r => r.score_productos)),
@@ -212,57 +246,123 @@ function calcAspectos(rows: Row[]) {
   const total = rows.length;
   return Object.entries(counts)
     .map(([a, n]) => ({ a, n, pct: total > 0 ? Math.round((n / total) * 100) : 0 }))
-    .sort((a, b) => b.n - a.n);
+    .sort((x, y) => y.n - x.n);
 }
 
-function calcBySucursal(rows: Row[]) {
-  const map = new Map<string, { name: string; rows: Row[] }>();
-  for (const r of rows) {
-    if (!r.c_sucursal || !r.sucursal_nombre) continue;
-    if (!map.has(r.c_sucursal)) map.set(r.c_sucursal, { name: r.sucursal_nombre, rows: [] });
-    map.get(r.c_sucursal)!.rows.push(r);
-  }
-  return Array.from(map.values()).map(({ name, rows: sr }) => {
-    const m = calcMetrics(sr);
-    return { name, total: sr.length, nps: m.nps, avgScore: avg(sr.map(r => r.score)),
-      avgExp: m.avgExp, avgProd: m.avgProd, avgPrec: m.avgPrec, avgAten: m.avgAten };
-  }).sort((a, b) => b.total - a.total);
-}
-
-/* ─── UI helpers ─── */
-function ScoreBar({ label, value }: { label: string; value: number | null }) {
-  const v = value ?? 0;
+/* ─────────────────────── UI Components ─────────────────────── */
+function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs text-gray-500 w-24 shrink-0">{label}</span>
-      <div className="flex-1 h-2 rounded-full bg-gray-200">
-        <div className="h-2 rounded-full" style={{ width: `${(v / 5) * 100}%`, background: UAA_PURPLE }} />
-      </div>
-      <span className="text-xs font-bold w-6 text-right">{v > 0 ? v : '—'}</span>
+    <div className="flex items-center gap-3 mb-4">
+      <div className="w-1 h-5 rounded-full flex-shrink-0" style={{ background: P }} />
+      <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500">{children}</h2>
     </div>
   );
 }
 
-function Clasif({ c }: { c: string }) {
-  const map: Record<string, [string, string, string]> = {
-    promotor:  ['Promotor',  '#15803d', '#dcfce7'],
-    pasivo:    ['Pasivo',    '#92400e', '#fef3c7'],
-    detractor: ['Detractor', '#b91c1c', '#fee2e2'],
-  };
-  const [label, color, bg] = map[c] ?? [c, '#374151', '#f3f4f6'];
+function NpsHero({ nps, label }: { nps: number; label: string }) {
+  const color = nps >= 50 ? G : nps >= 0 ? A : R;
+  const badge = nps >= 50 ? 'Excelente' : nps >= 0 ? 'Bueno' : 'Crítico';
+  const pct = Math.min(100, Math.max(0, (nps + 100) / 2)); // 0–100%
   return (
-    <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ color, background: bg }}>
-      {label}
-    </span>
+    <div className="flex flex-col items-center justify-center text-center py-4">
+      <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: P }}>{label}</p>
+      <p className="font-black leading-none mb-1" style={{ fontSize: 72, color }}>
+        {nps > 0 ? `+${nps}` : nps}
+      </p>
+      <span className="text-xs font-semibold px-3 py-1 rounded-full mb-3"
+        style={{ color, background: color + '1a' }}>
+        {badge}
+      </span>
+      {/* Linear NPS bar */}
+      <div className="relative w-full max-w-xs h-2 rounded-full bg-gray-200">
+        <div className="absolute top-0 bottom-0 w-0.5 bg-gray-400 rounded-full" style={{ left: '50%' }} />
+        <div className="absolute top-0 bottom-0 rounded-full" style={{
+          left:  nps >= 0 ? '50%' : `${pct}%`,
+          width: `${Math.abs(nps) / 2}%`,
+          background: color,
+        }} />
+      </div>
+      <div className="flex justify-between w-full max-w-xs mt-1">
+        <span className="text-gray-400" style={{ fontSize: 10 }}>-100</span>
+        <span className="text-gray-400" style={{ fontSize: 10 }}>0</span>
+        <span className="text-gray-400" style={{ fontSize: 10 }}>+100</span>
+      </div>
+    </div>
   );
 }
 
-function NpsNum({ nps }: { nps: number }) {
-  const color = nps >= 50 ? '#15803d' : nps >= 0 ? '#b45309' : '#b91c1c';
-  return <span style={{ color }} className="font-black">{nps > 0 ? `+${nps}` : nps}</span>;
+function KpiCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm text-center">
+      <p className="text-xs text-gray-500 mb-1 font-medium">{label}</p>
+      <p className="text-2xl font-black" style={{ color: color ?? '#111827' }}>{value}</p>
+      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+    </div>
+  );
 }
 
-/* ─── Page ─── */
+function DistBar({ p, pa, d, n }: { p: number; pa: number; d: number; n: number }) {
+  if (n === 0) return <div className="h-4 rounded-full bg-gray-200" />;
+  const pp = Math.round((p / n) * 100);
+  const pap = Math.round((pa / n) * 100);
+  const dp = 100 - pp - pap;
+  return (
+    <div>
+      <div className="flex h-5 rounded-xl overflow-hidden gap-0.5">
+        {pp > 0  && <div style={{ width: `${pp}%`,  background: G }} />}
+        {pap > 0 && <div style={{ width: `${pap}%`, background: A }} />}
+        {dp > 0  && <div style={{ width: `${dp}%`,  background: R }} />}
+      </div>
+      <div className="flex justify-between mt-1.5 text-xs">
+        <span style={{ color: G }} className="font-semibold">● {p} Promotores ({pp}%)</span>
+        <span style={{ color: A }} className="font-semibold">● {pa} Pasivos ({pap}%)</span>
+        <span style={{ color: R }} className="font-semibold">● {d} Detractores ({dp}%)</span>
+      </div>
+    </div>
+  );
+}
+
+function ScoreBar({ label, value, total }: { label: string; value: number | null; total?: number | null }) {
+  const v = value ?? 0;
+  const showTotal = total !== undefined;
+  const color = v >= 4 ? G : v >= 3 ? A : R;
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-xs text-gray-600 font-medium w-28 shrink-0">{label}</span>
+      <div className="flex-1 h-2.5 rounded-full bg-gray-100">
+        <div className="h-2.5 rounded-full transition-all" style={{ width: `${(v / 5) * 100}%`, background: color }} />
+      </div>
+      <span className="text-xs font-bold w-8 text-right tabular-nums" style={{ color }}>
+        {v > 0 ? v : '—'}
+      </span>
+      {showTotal && (
+        <span className="text-xs text-gray-300 w-8 text-right tabular-nums">{total ?? '—'}</span>
+      )}
+    </div>
+  );
+}
+
+function PageHeader({ period, subtitle }: { period: Period; subtitle?: string }) {
+  return (
+    <div className="flex items-center justify-between py-4 mb-6 border-b-2" style={{ borderColor: P }}>
+      <div className="flex items-center gap-3">
+        <div className="rounded-lg p-1.5" style={{ background: P }}>
+          <Image src="/logo-clubuaa.png" alt="Club UAA" width={60} height={22} style={{ objectFit: 'contain' }} />
+        </div>
+        <div>
+          <p className="text-xs font-black uppercase tracking-widest" style={{ color: P }}>Reporte NPS · Supermercados UAA</p>
+          <p className="text-xs text-gray-500 mt-0.5">{subtitle ?? `Emitido el ${period.anchorLabel}`}</p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className="text-xs font-bold text-gray-700">Período</p>
+        <p className="text-sm font-black" style={{ color: P }}>{period.rangeLabel}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────── Page ─────────────────────── */
 export default async function ReportePage({
   searchParams,
 }: {
@@ -274,194 +374,134 @@ export default async function ReportePage({
   if (!email) redirect('/dashboard/login');
 
   const { fecha: fechaParam } = await searchParams;
-  const fecha = fechaParam ?? getYesterdayArg();
+  const anchor = fechaParam ?? getDefaultAnchor();
+  const period = getPeriod(anchor);
+  const { allRows, periodRows, envTotal, envPeriod } = await fetchData(period);
 
-  const { allRows, enviadosTotal, enviadosAyer } = await fetchData(fecha);
+  // Métricas del período
+  const pm = calcM(periodRows);
+  const tasaPeriod = envPeriod > 0 ? Math.round((periodRows.filter(r => r.cliente_id > 0).length / envPeriod) * 100) : 0;
 
-  // Si es lunes, el período "ayer" abarca Dom + Lun
-  const esLunes = isMonday(fecha);
-  const fechaDomingo = esLunes ? prevDay(fecha) : null;
-  const ayerRows = allRows.filter(r => {
-    const dk = dateKey(r.respondido_at);
-    return dk === fecha || (esLunes && dk === fechaDomingo);
-  });
+  // Métricas acumuladas
+  const am = calcM(allRows);
+  const tasaAcum  = envTotal  > 0 ? Math.round((allRows.filter(r => r.cliente_id > 0).length / envTotal)  * 100) : 0;
 
-  // Acumulado
-  const acc = calcMetrics(allRows);
+  // Aspectos (acumulado)
   const aspectos = calcAspectos(allRows);
-  const porSucursal = calcBySucursal(allRows);
-  const tasaAcum = enviadosTotal > 0
-    ? Math.round((allRows.filter(r => r.cliente_id > 0).length / enviadosTotal) * 100)
-    : 0;
+  const maxAsp = aspectos.length > 0 ? aspectos[0].n : 1;
 
-  // Ayer
-  const ay = calcMetrics(ayerRows);
-  const tasaAyer = enviadosAyer > 0
-    ? Math.round((ayerRows.filter(r => r.cliente_id > 0).length / enviadosAyer) * 100)
-    : 0;
+  // Comentarios del período (promotores→pasivos→detractores)
+  const comentarios = periodRows
+    .filter(r => r.comentario?.trim())
+    .sort((a, b) => b.score - a.score);
 
-  const comentarios = ayerRows.filter(r => r.comentario?.trim())
-    .sort((a, b) => b.score - a.score); // promotores primero
-
-  const accNpsColor = acc.nps >= 50 ? '#15803d' : acc.nps >= 0 ? '#b45309' : '#b91c1c';
-  const maxAspecto = aspectos.length > 0 ? aspectos[0].n : 1;
+  // Colores
+  const pNpsColor = pm.nps >= 50 ? G : pm.nps >= 0 ? A : R;
 
   return (
     <>
       <style>{`
         @media print {
-          @page { size: A4; margin: 1.5cm; }
+          @page { size: A4 portrait; margin: 1.2cm 1.5cm; }
           .no-print { display: none !important; }
           .page-break { break-before: page; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 11px; }
+        }
+        @media screen {
+          body { background: #f3f4f6; }
         }
       `}</style>
 
-      {/* ── Nav bar (no se imprime) ── */}
+      {/* ── Navbar ── */}
       <div className="no-print w-full py-3 px-6 flex items-center justify-between border-b bg-white sticky top-0 z-10 shadow-sm">
         <div className="flex items-center gap-4">
-          <Link href="/dashboard" className="text-xs text-gray-500 hover:text-gray-800 transition-colors">
-            ← Volver al dashboard
+          <Link href="/dashboard" className="text-xs text-gray-500 hover:text-gray-700 transition-colors">
+            ← Dashboard
           </Link>
-          <span className="text-gray-300">|</span>
-          <span className="text-sm font-semibold text-gray-700">Reporte NPS — Acumulado</span>
+          <span className="text-gray-200">|</span>
+          <span className="text-sm font-semibold text-gray-700">Reporte NPS</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-400 hidden sm:inline">
-            {esLunes ? 'Período Dom+Lun:' : 'Comentarios de:'}
-          </span>
-          <DateNav fecha={fecha} />
-          {esLunes && (
-            <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md hidden sm:inline">
-              Dom {dFmt(fechaDomingo!)} + Lun {dFmt(fecha)}
-            </span>
-          )}
-        </div>
+        <DateNav fecha={anchor} />
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-8 bg-gray-50 min-h-screen">
+      {/* ════════════════ PÁGINA 1 — PERÍODO ACTUAL ════════════════ */}
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <PageHeader period={period} />
 
-        {/* ══════════════════════════════════════════
-            PÁGINA 1 — RESUMEN ACUMULADO
-        ═══════════════════════════════════════════ */}
+        <div className="grid grid-cols-3 gap-6 mb-6">
+          {/* NPS Hero */}
+          <div className="col-span-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <NpsHero nps={pm.nps} label="NPS del Período" />
+          </div>
 
-        {/* Header del reporte */}
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div style={{ background: UAA_PURPLE }} className="rounded-xl p-2.5">
-              <Image src="/logo-clubuaa.png" alt="Club UAA" width={80} height={28} style={{ objectFit: 'contain' }} />
+          {/* KPIs + Distribución */}
+          <div className="col-span-2 flex flex-col gap-4">
+            <div className="grid grid-cols-4 gap-3">
+              <KpiCard label="Respuestas" value={pm.n} sub={`de ${envPeriod} enviados`} />
+              <KpiCard label="Tasa" value={`${tasaPeriod}%`} sub="de respuesta" color={pNpsColor} />
+              <KpiCard label="Promotores" value={pm.p} sub={`${pm.n > 0 ? Math.round((pm.p/pm.n)*100) : 0}%`} color={G} />
+              <KpiCard label="Detractores" value={pm.d} sub={`${pm.n > 0 ? Math.round((pm.d/pm.n)*100) : 0}%`} color={R} />
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Reporte NPS — Acumulado</h1>
-              <p className="text-xs text-gray-500 mt-0.5">Generado el {new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })} · {email}</p>
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Distribución de respuestas</p>
+              <DistBar p={pm.p} pa={pm.pa} d={pm.d} n={pm.n} />
             </div>
           </div>
         </div>
 
-        {/* ── Resumen de ayer (poca importancia) ── */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-6">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-            {ayerLabel(fecha)}
-          </p>
-          <div className="flex flex-wrap gap-6">
-            <div>
-              <p className="text-xs text-gray-500">NPS</p>
-              <p className="text-xl font-bold"><NpsNum nps={ay.nps} /></p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Respuestas</p>
-              <p className="text-xl font-bold text-gray-800">{ay.total}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Enviados</p>
-              <p className="text-xl font-bold text-gray-800">{enviadosAyer}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Tasa</p>
-              <p className="text-xl font-bold text-gray-800">{tasaAyer}%</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Promotores</p>
-              <p className="text-xl font-bold text-green-600">{ay.promotores}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Pasivos</p>
-              <p className="text-xl font-bold text-yellow-600">{ay.pasivos}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Detractores</p>
-              <p className="text-xl font-bold text-red-600">{ay.detractores}</p>
-            </div>
-            {ay.avgExp && <div><p className="text-xs text-gray-500">Exp.</p><p className="text-xl font-bold text-gray-800">{ay.avgExp}</p></div>}
-            {ay.avgProd && <div><p className="text-xs text-gray-500">Prod.</p><p className="text-xl font-bold text-gray-800">{ay.avgProd}</p></div>}
-            {ay.avgPrec && <div><p className="text-xs text-gray-500">Prec.</p><p className="text-xl font-bold text-gray-800">{ay.avgPrec}</p></div>}
-            {ay.avgAten && <div><p className="text-xs text-gray-500">Aten.</p><p className="text-xl font-bold text-gray-800">{ay.avgAten}</p></div>}
+        {/* Dimensiones del período */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+          <SectionTitle>Dimensiones promedio — período</SectionTitle>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-2.5">
+            <ScoreBar label="Experiencia general" value={pm.avgExp} />
+            <ScoreBar label="Calidad de productos" value={pm.avgProd} />
+            <ScoreBar label="Precios"               value={pm.avgPrec} />
+            <ScoreBar label="Atención al cliente"   value={pm.avgAten} />
           </div>
         </div>
 
-        {/* ── KPIs acumulados ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        {/* Referencia acumulada */}
+        <div className="rounded-xl border border-gray-200 bg-gray-50 px-5 py-3 flex flex-wrap items-center gap-6">
+          <p className="text-xs font-bold uppercase tracking-wider text-gray-400 shrink-0">Histórico acumulado</p>
           {[
-            { label: 'Total respuestas', value: acc.total, sub: 'acumulado' },
-            { label: 'Promotores',       value: acc.promotores, sub: `${acc.total > 0 ? Math.round((acc.promotores/acc.total)*100) : 0}% del total` },
-            { label: 'Detractores',      value: acc.detractores, sub: `${acc.total > 0 ? Math.round((acc.detractores/acc.total)*100) : 0}% del total` },
-            { label: 'Tasa de respuesta', value: `${tasaAcum}%`, sub: `${allRows.filter(r=>r.cliente_id>0).length} / ${enviadosTotal}` },
-          ].map(({ label, value, sub }) => (
-            <div key={label} className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
-              <p className="text-xs text-gray-500 mb-1">{label}</p>
-              <p className="text-2xl font-bold text-gray-900">{value}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+            { l: 'NPS',        v: am.nps > 0 ? `+${am.nps}` : String(am.nps), c: am.nps >= 50 ? G : am.nps >= 0 ? A : R },
+            { l: 'Respuestas', v: am.n },
+            { l: 'Tasa',       v: `${tasaAcum}%` },
+            { l: 'Enviados',   v: envTotal },
+            { l: 'Experiencia',v: am.avgExp ?? '—' },
+            { l: 'Productos',  v: am.avgProd ?? '—' },
+            { l: 'Precios',    v: am.avgPrec ?? '—' },
+            { l: 'Atención',   v: am.avgAten ?? '—' },
+          ].map(({ l, v, c }) => (
+            <div key={l} className="text-center">
+              <p className="text-xs text-gray-400">{l}</p>
+              <p className="text-base font-black" style={{ color: c ?? '#374151' }}>{v}</p>
             </div>
           ))}
         </div>
 
-        {/* ── NPS acumulado + dimensiones ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 flex flex-col items-center justify-center text-center">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">NPS Acumulado</p>
-            <p className="text-7xl font-black mb-2" style={{ color: accNpsColor }}>
-              {acc.nps > 0 ? `+${acc.nps}` : acc.nps}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              {acc.promotores} promotores · {acc.pasivos} pasivos · {acc.detractores} detractores
-            </p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">Dimensiones promedio acumuladas</p>
-            <div className="space-y-3">
-              <ScoreBar label="Experiencia" value={acc.avgExp} />
-              <ScoreBar label="Productos"   value={acc.avgProd} />
-              <ScoreBar label="Precios"     value={acc.avgPrec} />
-              <ScoreBar label="Atención"    value={acc.avgAten} />
-            </div>
-          </div>
-        </div>
+        {/* ════════════════ PÁGINA 2 — ASPECTOS ════════════════ */}
+        <div className="page-break mt-0 pt-8">
+          <PageHeader period={period} subtitle="Análisis — datos acumulados" />
 
-        {/* ══════════════════════════════════════════
-            PÁGINA 2 — ASPECTOS + SUCURSALES
-        ═══════════════════════════════════════════ */}
-        <div className="page-break">
-
-          {/* Aspectos a mejorar */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
-              Aspectos a mejorar — acumulado
-            </p>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <SectionTitle>Aspectos a mejorar — acumulado ({allRows.length} respuestas)</SectionTitle>
             {aspectos.length === 0 ? (
               <p className="text-sm text-gray-400">Sin datos.</p>
             ) : (
               <div className="space-y-2.5">
-                {aspectos.map(({ a, n, pct }) => {
+                {aspectos.map(({ a, n, pct }, i) => {
                   const good = a.toLowerCase().includes('conforme');
-                  const color = good ? '#15803d' : UAA_PURPLE;
+                  const c = good ? G : P;
                   return (
                     <div key={a} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-600 w-52 shrink-0 truncate" title={a}>{a}</span>
+                      <span className="text-xs font-bold text-gray-400 w-5 text-right shrink-0">{i + 1}</span>
+                      <span className="text-xs text-gray-700 w-52 shrink-0 truncate" title={a}>{a}</span>
                       <div className="flex-1 h-2.5 rounded-full bg-gray-100">
-                        <div className="h-2.5 rounded-full" style={{ width: `${(n / maxAspecto) * 100}%`, background: color }} />
+                        <div className="h-2.5 rounded-full" style={{ width: `${(n / maxAsp) * 100}%`, background: c }} />
                       </div>
-                      <span className="text-xs font-bold w-20 text-right shrink-0" style={{ color }}>
-                        {n} <span className="text-gray-400 font-normal">({pct}%)</span>
+                      <span className="text-xs font-bold tabular-nums shrink-0" style={{ color: c, minWidth: 60, textAlign: 'right' }}>
+                        {n} <span className="font-normal text-gray-400">({pct}%)</span>
                       </span>
                     </div>
                   );
@@ -469,91 +509,65 @@ export default async function ReportePage({
               </div>
             )}
           </div>
+        </div>
 
-          {/* Por sucursal */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Desglose por sucursal — acumulado</p>
+        {/* ════════════════ PÁGINA 3 — COMENTARIOS ════════════════ */}
+        <div className="page-break mt-0 pt-8">
+          <PageHeader period={period} subtitle={`Comentarios del período — ${comentarios.length} comentario${comentarios.length !== 1 ? 's' : ''}`} />
+
+          {comentarios.length === 0 ? (
+            <div className="text-center py-16">
+              <p className="text-3xl mb-3">💬</p>
+              <p className="text-sm text-gray-500">No hubo comentarios en este período.</p>
             </div>
-            {porSucursal.length === 0 ? (
-              <p className="p-5 text-sm text-gray-400">Sin datos de sucursal.</p>
-            ) : (
-              <table className="w-full text-xs">
+          ) : (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <table className="w-full" style={{ fontSize: 11 }}>
                 <thead>
-                  <tr style={{ background: UAA_PURPLE }}>
-                    {['Sucursal', 'Respuestas', 'NPS', 'Score', 'Experiencia', 'Productos', 'Precios', 'Atención'].map(h => (
-                      <th key={h} className="px-3 py-2.5 text-left text-white font-semibold">{h}</th>
-                    ))}
+                  <tr style={{ background: P }}>
+                    <th className="px-3 py-2.5 text-left text-white font-semibold w-20">Clasif.</th>
+                    <th className="px-3 py-2.5 text-left text-white font-semibold w-8">★</th>
+                    <th className="px-3 py-2.5 text-left text-white font-semibold w-28">Cliente</th>
+                    <th className="px-3 py-2.5 text-left text-white font-semibold w-28">Sucursal</th>
+                    <th className="px-3 py-2.5 text-left text-white font-semibold">Comentario</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {porSucursal.map((s, i) => {
-                    const nc = s.nps >= 50 ? '#15803d' : s.nps >= 0 ? '#b45309' : '#b91c1c';
+                  {comentarios.map((r, i) => {
+                    const [label, color, bg] = r.clasificacion === 'promotor'
+                      ? ['Promotor', G, '#dcfce7']
+                      : r.clasificacion === 'pasivo'
+                      ? ['Pasivo', A, '#fef3c7']
+                      : ['Detractor', R, '#fee2e2'];
                     return (
-                      <tr key={s.name} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                        <td className="px-3 py-2.5 font-medium text-gray-800">{s.name}</td>
-                        <td className="px-3 py-2.5 text-gray-600">{s.total}</td>
-                        <td className="px-3 py-2.5 font-bold" style={{ color: nc }}>{s.nps > 0 ? `+${s.nps}` : s.nps}</td>
-                        <td className="px-3 py-2.5 text-gray-600">{s.avgScore ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-gray-600">{s.avgExp  ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-gray-600">{s.avgProd ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-gray-600">{s.avgPrec ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-gray-600">{s.avgAten ?? '—'}</td>
+                      <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-3 py-2">
+                          <span className="font-semibold px-1.5 py-0.5 rounded" style={{ color, background: bg, fontSize: 10 }}>
+                            {label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-bold tabular-nums" style={{ color: A }}>{r.score}</td>
+                        <td className="px-3 py-2 text-gray-700 max-w-[7rem] truncate" title={r.nombre_cliente ?? ''}>
+                          {r.nombre_cliente ?? <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500 max-w-[7rem] truncate" title={r.sucursal_nombre ?? ''}>
+                          {r.sucursal_nombre ?? <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700 leading-snug">{r.comentario}</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            )}
-          </div>
-        </div>
-
-        {/* ══════════════════════════════════════════
-            PÁGINA 3 — COMENTARIOS DE AYER
-        ═══════════════════════════════════════════ */}
-        <div className="page-break mt-8">
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Comentarios — {ayerLabel(fecha)}
-              </p>
-              <span className="text-xs text-gray-400">{comentarios.length} comentario{comentarios.length !== 1 ? 's' : ''}</span>
             </div>
-            {comentarios.length === 0 ? (
-              <p className="p-6 text-sm text-gray-400">No hubo comentarios este día.</p>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {comentarios.map((r, i) => (
-                  <div key={i} className="px-5 py-4">
-                    <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                      <Clasif c={r.clasificacion} />
-                      <span className="text-xs text-amber-400 tracking-tight">
-                        {'★'.repeat(r.score)}{'☆'.repeat(5 - r.score)}
-                      </span>
-                      {r.nombre_cliente && (
-                        <span className="text-xs font-medium text-gray-700">{r.nombre_cliente}</span>
-                      )}
-                      {r.sucursal_nombre && (
-                        <span className="text-xs text-gray-400">· {r.sucursal_nombre}</span>
-                      )}
-                      {r.fecha_compra && (
-                        <span className="text-xs text-gray-400 ml-auto">Compra: {r.fecha_compra}</span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-700 leading-relaxed">{r.comentario}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="mt-10 pt-4 border-t border-gray-200 flex items-center justify-between">
-          <p className="text-xs text-gray-400">Club UAA — Dashboard NPS</p>
-          <p className="text-xs text-gray-400">encuesta.clubuaa.ar/dashboard/reporte?fecha={fecha}</p>
+        <div className="mt-10 pt-4 border-t border-gray-200 flex items-center justify-between text-gray-400" style={{ fontSize: 10 }}>
+          <span>Club UAA · Dashboard NPS · {email}</span>
+          <span>encuesta.clubuaa.ar/dashboard/reporte?fecha={anchor}</span>
         </div>
-
       </div>
     </>
   );
