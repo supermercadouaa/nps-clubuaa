@@ -349,7 +349,7 @@ function ScoreBar({ label, value, total }: { label: string; value: number | null
   );
 }
 
-function PageHeader({ period, subtitle }: { period: Period; subtitle?: string }) {
+function PageHeader({ period, subtitle, hideDates }: { period: Period; subtitle?: string; hideDates?: boolean }) {
   return (
     <div className="py-4 mb-6 border-b-2" style={{ borderColor: P }}>
       <div className="flex items-center justify-between mb-3">
@@ -364,21 +364,23 @@ function PageHeader({ period, subtitle }: { period: Period; subtitle?: string })
         </div>
       </div>
       {/* Period breakdown row */}
-      <div className="flex gap-6 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Compras analizadas</span>
-          <span className="text-xs font-black px-2 py-0.5 rounded" style={{ background: P + '15', color: P }}>
-            {period.purchaseRangeLabel}
-          </span>
+      {!hideDates && (
+        <div className="flex gap-6 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Compras analizadas</span>
+            <span className="text-xs font-black px-2 py-0.5 rounded" style={{ background: P + '15', color: P }}>
+              {period.purchaseRangeLabel}
+            </span>
+          </div>
+          <div className="w-px bg-gray-200 self-stretch" />
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Respuestas recibidas</span>
+            <span className="text-xs font-black px-2 py-0.5 rounded" style={{ background: '#6366f115', color: '#4f46e5' }}>
+              {period.rangeLabel}
+            </span>
+          </div>
         </div>
-        <div className="w-px bg-gray-200 self-stretch" />
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Respuestas recibidas</span>
-          <span className="text-xs font-black px-2 py-0.5 rounded" style={{ background: '#6366f115', color: '#4f46e5' }}>
-            {period.rangeLabel}
-          </span>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -414,7 +416,7 @@ export default async function ReportePage({
   // Comentarios del período (promotores→pasivos→detractores)
   const comentarios = periodRows
     .filter(r => r.comentario?.trim())
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => a.score - b.score); // detractores primero (score bajo), promotores último
 
   // Colores
   const pNpsColor = pm.nps >= 50 ? G : pm.nps >= 0 ? A : R;
@@ -509,7 +511,7 @@ export default async function ReportePage({
 
         {/* ════════════════ PÁGINA 2 — ASPECTOS ════════════════ */}
         <div className="page-break mt-0 pt-8">
-          <PageHeader period={period} subtitle="Análisis — datos acumulados" />
+          <PageHeader period={period} subtitle="Análisis acumulado — todas las respuestas históricas" hideDates />
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
             <SectionTitle>Aspectos a mejorar — acumulado ({allRows.length} respuestas)</SectionTitle>
