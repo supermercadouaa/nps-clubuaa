@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { TrendingUp, TrendingDown, Minus, Star, MessageSquare, BarChart3, MapPin, Send, Search } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -289,6 +290,13 @@ export default function DashboardClient({
         </div>
         <div className="flex items-center gap-2.5">
           <span className="text-purple-300 text-xs hidden sm:inline">{email}</span>
+          <Link
+            href="/dashboard/reporte"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)' }}
+          >
+            Reporte PDF
+          </Link>
           <AutoRefresh intervalMs={30000}/>
           <LogoutButton/>
         </div>
