@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const ALLOWED_EMAILS = new Set([
   'vmalmiron@uaa.com.ar',
   'ndellarosa@uaa.com.ar',
+  'pdenrique@uaa.com.ar',
 ]);
 
 function b64urlToBytes(b64url: string): ArrayBuffer {

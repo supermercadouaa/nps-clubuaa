@@ -258,8 +258,8 @@ export default function DashboardClient({
     const q = search.trim().toLowerCase();
     return withText.filter(r =>
       r.comentario?.toLowerCase().includes(q) ||
-      r.nombre_cliente?.toLowerCase().includes(q) ||
-      r.sucursal_nombre?.toLowerCase().includes(q)
+      r.sucursal_nombre?.toLowerCase().includes(q) ||
+      String(r.ticket_id).includes(q)
     );
   }, [filtered, search]);
   const recientes   = filtered.slice(0, 10);
@@ -572,7 +572,7 @@ export default function DashboardClient({
                       type="text"
                       value={search}
                       onChange={e => setSearch(e.target.value)}
-                      placeholder="Buscar comentario, cliente o sucursal..."
+                      placeholder="Buscar comentario o sucursal..."
                       className="h-8 pl-8 pr-3 text-xs rounded-md border border-border bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 w-72"
                     />
                     {search && (
@@ -594,7 +594,7 @@ export default function DashboardClient({
                     <Table>
                       <TableHeader>
                         <TableRow className="border-border/40 hover:bg-transparent">
-                          <TableHead className="text-xs font-semibold pl-6 w-36">Cliente</TableHead>
+                          <TableHead className="text-xs font-semibold pl-6 w-28">Ticket</TableHead>
                           <TableHead className="text-xs font-semibold w-32">Sucursal</TableHead>
                           <TableHead className="text-xs font-semibold w-28">Compra</TableHead>
                           <TableHead className="text-xs font-semibold w-32">Respuesta</TableHead>
@@ -606,11 +606,9 @@ export default function DashboardClient({
                         {comentarios.map((r, i) => (
                           <TableRow key={i} className="border-border/30 hover:bg-muted/30 align-top">
                             <TableCell className="pl-6 py-3 align-top">
-                              {r.nombre_cliente
-                                ? <span className="text-xs font-medium">{r.nombre_cliente}</span>
-                                : r.cliente_id === 0
-                                  ? <span className="text-xs text-muted-foreground italic">Demo</span>
-                                  : <span className="text-xs text-muted-foreground">ID {r.cliente_id}</span>}
+                              {r.ticket_id > 0
+                                ? <span className="text-xs font-mono font-medium">#{r.ticket_id}</span>
+                                : <span className="text-xs text-muted-foreground italic">Demo</span>}
                             </TableCell>
                             <TableCell className="align-top py-3">
                               {r.sucursal_nombre

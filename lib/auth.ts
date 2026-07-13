@@ -3,6 +3,7 @@ import crypto from 'crypto';
 export const ALLOWED_EMAILS = new Set([
   'vmalmiron@uaa.com.ar',
   'ndellarosa@uaa.com.ar',
+  'pdenrique@uaa.com.ar',
 ]);
 
 function getSecret(): string {
