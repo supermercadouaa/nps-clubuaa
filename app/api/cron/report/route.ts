@@ -356,8 +356,22 @@ export async function GET(req: Request) {
       }));
 
     const reportUrl = `https://encuesta.clubuaa.ar/dashboard/reporte?fecha=${anchor}`;
+    const topAspecto = aspectos[0]?.a ?? null;
+    const npsStr = pm.nps > 0 ? `+${pm.nps}` : String(pm.nps);
 
-    const html = buildEmail({
+    const subject = `ENCUESTA NPS (${period.rangeLabel})`;
+
+    const bodyText = [
+      `Se adjunta reporte en PDF de encuestas NPS. En el periodo analizado se recibieron ${pm.total} respuestas lo que arrojó un score de ${npsStr} puntos.`,
+      topAspecto ? `La principal variable a mejorar es: ${topAspecto}.` : null,
+      ``,
+      `La información completa y acumulada se puede consultar en: https://encuesta.clubuaa.ar/dashboard`,
+      ``,
+      `Saludos.`,
+    ].filter(l => l !== null).join('\n');
+
+    // HTML del reporte completo (para que n8n lo convierta a PDF y adjunte)
+    const reportHtml = buildEmail({
       period, reportUrl,
       nps: pm.nps, total: pm.total, promotores: pm.promotores, pasivos: pm.pasivos, detractores: pm.detractores,
       tasa, enviados: envPeriod,
@@ -366,17 +380,15 @@ export async function GET(req: Request) {
       aspectos, comentarios,
     });
 
-    const subject = `NPS ${period.rangeLabel} — Score: ${pm.nps > 0 ? '+' : ''}${pm.nps} | ${pm.total} respuestas`;
-
-    // Devuelve HTML + metadatos para que n8n envíe el email
     return NextResponse.json({
       ok: true,
       subject,
-      html,
+      bodyText,
+      reportHtml,
       period: period.rangeLabel,
       nps: pm.nps,
       total: pm.total,
-      tasa,
+      topAspecto,
     });
   } catch (e) {
     console.error('[cron/report]', e);
