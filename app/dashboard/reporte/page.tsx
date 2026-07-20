@@ -556,7 +556,6 @@ export default async function ReportePage({
                   <tr style={{ background: P }}>
                     <th className="px-3 py-2.5 text-left text-white font-semibold w-20">Clasif.</th>
                     <th className="px-3 py-2.5 text-left text-white font-semibold w-8">★</th>
-                    <th className="px-3 py-2.5 text-left text-white font-semibold w-28">Cliente</th>
                     <th className="px-3 py-2.5 text-left text-white font-semibold w-28">Sucursal</th>
                     <th className="px-3 py-2.5 text-left text-white font-semibold">Comentario</th>
                   </tr>
@@ -576,9 +575,6 @@ export default async function ReportePage({
                           </span>
                         </td>
                         <td className="px-3 py-2 font-bold tabular-nums" style={{ color: A }}>{r.score}</td>
-                        <td className="px-3 py-2 text-gray-700 max-w-[7rem] truncate" title={r.nombre_cliente ?? ''}>
-                          {r.nombre_cliente ?? <span className="text-gray-300">—</span>}
-                        </td>
                         <td className="px-3 py-2 text-gray-500 max-w-[7rem] truncate" title={r.sucursal_nombre ?? ''}>
                           {r.sucursal_nombre ?? <span className="text-gray-300">—</span>}
                         </td>
