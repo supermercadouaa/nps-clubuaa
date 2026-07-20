@@ -252,11 +252,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const resendKey = process.env.RESEND_API_KEY;
-  if (!resendKey) return NextResponse.json({ error: 'RESEND_API_KEY not set' }, { status: 500 });
-
-  const toEmail = process.env.REPORT_EMAIL ?? 'almironfernandezvalentin@gmail.com';
-
   try {
     const anchor = getDefaultAnchor();
     const period = getPeriod(anchor);
@@ -373,23 +368,16 @@ export async function GET(req: Request) {
 
     const subject = `NPS ${period.rangeLabel} — Score: ${pm.nps > 0 ? '+' : ''}${pm.nps} | ${pm.total} respuestas`;
 
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'NPS UAA <nps@encuesta.clubuaa.ar>',
-        to: [toEmail],
-        subject,
-        html,
-      }),
+    // Devuelve HTML + metadatos para que n8n envíe el email
+    return NextResponse.json({
+      ok: true,
+      subject,
+      html,
+      period: period.rangeLabel,
+      nps: pm.nps,
+      total: pm.total,
+      tasa,
     });
-
-    if (!res.ok) {
-      const err = await res.text();
-      return NextResponse.json({ error: 'Resend error', detail: err }, { status: 500 });
-    }
-
-    return NextResponse.json({ ok: true, period: period.rangeLabel, nps: pm.nps, total: pm.total });
   } catch (e) {
     console.error('[cron/report]', e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
