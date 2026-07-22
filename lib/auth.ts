@@ -6,6 +6,7 @@ export const ALLOWED_EMAILS = new Set([
   'pdenrique@uaa.com.ar',
   'amllandeka@uaa.com.ar',
   'shsanchez@uaa.com.ar',
+  'jwvillalba@uaa.com.ar',
 ]);
 
 function getSecret(): string {
