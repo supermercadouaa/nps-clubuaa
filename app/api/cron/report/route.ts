@@ -40,39 +40,24 @@ function normCode(raw: string | null | undefined): string | null {
 }
 
 function getDefaultAnchor(): string {
-  const now = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const now = new Date(Date.now() - 3 * 60 * 60 * 1000); // Argentina UTC-3
   const day = now.getUTCDay();
-  const back = [3, 0, 1, 2, 0, 1, 2][day];
+  const back = day === 0 ? 6 : day + 6; // lunes de la semana pasada completa
   const dt = new Date(now.getTime() - back * 86400000);
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
 }
 
-type Period = { dates: string[]; rangeLabel: string; purchaseRangeLabel: string; anchorLabel: string };
+type Period = { dates: string[]; rangeLabel: string; anchorLabel: string };
 
 function getPeriod(anchor: string): Period {
-  const day = dayNum(anchor);
+  // anchor es siempre un lunes; cubre lunes a domingo (7 días)
+  const dates = Array.from({ length: 7 }, (_, i) => offsetDate(anchor, i));
   const [y] = anchor.split('-');
-  if (day === 1) {
-    const dates = [offsetDate(anchor, -3), offsetDate(anchor, -2), offsetDate(anchor, -1)];
-    const pd = dates.map(d => offsetDate(d, -1));
-    return {
-      dates,
-      rangeLabel:         `Vie ${dFmtShort(dates[0])} — Dom ${dFmtShort(dates[2])}/${y}`,
-      purchaseRangeLabel: `Jue ${dFmtShort(pd[0])} — Sáb ${dFmtShort(pd[2])}/${y}`,
-      anchorLabel:        `${dayName(anchor)} ${dFmt(anchor)}`,
-    };
-  }
-  if (day === 4) {
-    const dates = [offsetDate(anchor, -2), offsetDate(anchor, -1), anchor];
-    const pd = dates.map(d => offsetDate(d, -1));
-    return {
-      dates,
-      rangeLabel:         `Mar ${dFmtShort(dates[0])} — Jue ${dFmtShort(anchor)}/${y}`,
-      purchaseRangeLabel: `Lun ${dFmtShort(pd[0])} — Mié ${dFmtShort(pd[2])}/${y}`,
-      anchorLabel:        `${dayName(anchor)} ${dFmt(anchor)}`,
-    };
-  }
-  return { dates: [anchor], rangeLabel: dFmt(anchor), purchaseRangeLabel: dFmt(offsetDate(anchor,-1)), anchorLabel: dFmt(anchor) };
+  return {
+    dates,
+    rangeLabel:  `Lun ${dFmtShort(dates[0])} — Dom ${dFmtShort(dates[6])}/${y}`,
+    anchorLabel: `Semana del ${dFmt(anchor)}`,
+  };
 }
 
 /* ─── Email HTML ─── */
@@ -148,16 +133,8 @@ function buildEmail(data: {
 
   <!-- Period info -->
   <tr><td style="background:#f5f3ff;padding:12px 28px;border-bottom:1px solid #e9d5ff;">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td style="font-size:11px;color:#6b7280;">COMPRAS ANALIZADAS</td>
-        <td style="font-size:11px;color:#6b7280;padding-left:24px;">RESPUESTAS RECIBIDAS</td>
-      </tr>
-      <tr>
-        <td style="font-size:13px;font-weight:700;color:${P};">${data.period.purchaseRangeLabel}</td>
-        <td style="font-size:13px;font-weight:700;color:#4f46e5;padding-left:24px;">${data.period.rangeLabel}</td>
-      </tr>
-    </table>
+    <p style="margin:0;font-size:11px;color:#6b7280;">SEMANA ANALIZADA</p>
+    <p style="margin:4px 0 0;font-size:13px;font-weight:700;color:${P};">${data.period.rangeLabel}</p>
   </td></tr>
 
   <!-- NPS Hero -->

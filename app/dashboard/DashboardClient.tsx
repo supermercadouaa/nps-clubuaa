@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { TrendingUp, TrendingDown, Minus, Star, MessageSquare, BarChart3, MapPin, Send, Search } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Star, MessageSquare, BarChart3, MapPin, Send, Search, CalendarDays } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -98,6 +98,38 @@ function calcBySucursal(rows: Row[]) {
       promotores: m.promotores, detractores: m.detractores,
     };
   }).sort((a, b) => b.total - a.total);
+}
+
+/* ─── Historical grouping ─── */
+function getWeekAnchor(iso: string): string {
+  const d = new Date(iso);
+  const day = d.getUTCDay();
+  const back = day === 0 ? 6 : day - 1;
+  const dt = new Date(d.getTime() - back * 86400000);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`;
+}
+
+function weekLabel(anchor: string): string {
+  const [y, m, d] = anchor.split('-').map(Number);
+  const monday = new Date(Date.UTC(y, m - 1, d));
+  const sunday = new Date(monday.getTime() + 6 * 86400000);
+  const fmt = (dt: Date) => `${String(dt.getUTCDate()).padStart(2,'0')}/${String(dt.getUTCMonth()+1).padStart(2,'0')}`;
+  return `Lun ${fmt(monday)} — Dom ${fmt(sunday)}/${y}`;
+}
+
+function calcByWeek(rows: Row[]) {
+  const map = new Map<string, Row[]>();
+  for (const r of rows) {
+    const anchor = getWeekAnchor(r.respondido_at);
+    if (!map.has(anchor)) map.set(anchor, []);
+    map.get(anchor)!.push(r);
+  }
+  return Array.from(map.entries())
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([anchor, wRows]) => {
+      const m = calcMetrics(wRows);
+      return { anchor, total: m.total, nps: m.nps, avgExp: m.avgExp, avgProd: m.avgProd, avgPrec: m.avgPrec, avgAten: m.avgAten };
+    });
 }
 
 /* ─── NPS Gauge ─── */
@@ -251,7 +283,8 @@ export default function DashboardClient({
 
   const metrics    = useMemo(() => calcMetrics(filtered), [filtered]);
   const aspectos   = useMemo(() => calcAspectos(filtered, metrics.total), [filtered, metrics.total]);
-  const sucBrkdwn  = useMemo(() => calcBySucursal(rows), [rows]); // always all data
+  const sucBrkdwn  = useMemo(() => calcBySucursal(rows), [rows]);
+  const byWeek     = useMemo(() => calcByWeek(rows), [rows]);
   const comentarios = useMemo(() => {
     const withText = filtered.filter(r => r.comentario?.trim());
     if (!search.trim()) return withText;
@@ -361,6 +394,9 @@ export default function DashboardClient({
               {comentarios.length > 0 && (
                 <span className="ml-1.5 bg-primary/20 text-primary rounded-full px-1.5 text-[10px] font-bold">{comentarios.length}</span>
               )}
+            </TabsTrigger>
+            <TabsTrigger value="historico" className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <CalendarDays className="w-3.5 h-3.5 mr-1.5"/>Histórico
             </TabsTrigger>
           </TabsList>
 
@@ -631,6 +667,62 @@ export default function DashboardClient({
                                 <Highlight text={r.comentario ?? ''} query={search}/>
                               </p>
                             </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          {/* ════ TAB: HISTÓRICO ════ */}
+          <TabsContent value="historico">
+            <Card className="shadow-sm border-border/60">
+              <CardHeader className="pb-0 pt-5 px-6">
+                <CardTitle className="text-sm font-semibold">
+                  Evolución semanal
+                  <span className="ml-2 text-muted-foreground font-normal text-xs">{byWeek.length} semana{byWeek.length !== 1 ? 's' : ''} · datos acumulados históricos</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-0 pb-0 pt-3">
+                {byWeek.length === 0 ? (
+                  <p className="px-6 py-8 text-sm text-muted-foreground text-center">Sin datos históricos aún</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border/40 hover:bg-transparent">
+                          <TableHead className="text-xs font-semibold pl-6 min-w-[220px]">Semana</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Resp.</TableHead>
+                          <TableHead className="text-xs font-semibold text-center min-w-[80px]">NPS</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Experiencia</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Productos</TableHead>
+                          <TableHead className="text-xs font-semibold text-center">Precios</TableHead>
+                          <TableHead className="text-xs font-semibold text-center pr-6">Atención</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {byWeek.map((w, i) => (
+                          <TableRow key={w.anchor} className={`border-border/30 hover:bg-muted/30 ${i === 0 ? 'bg-primary/5' : ''}`}>
+                            <TableCell className="pl-6 py-3">
+                              <div className="flex items-center gap-2">
+                                {i === 0 && <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: UAA_PURPLE, color: '#fff' }}>Última</span>}
+                                <span className="text-xs font-medium tabular-nums">{weekLabel(w.anchor)}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center py-3">
+                              <span className="text-sm font-bold" style={{ color: UAA_PURPLE }}>{w.total}</span>
+                            </TableCell>
+                            <TableCell className="text-center py-3">
+                              <span className={`text-sm font-bold ${w.nps >= 50 ? 'text-green-600' : w.nps >= 0 ? 'text-yellow-600' : 'text-red-500'}`}>
+                                {w.nps > 0 ? `+${w.nps}` : w.nps}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center py-3"><ScoreCell value={w.avgExp}/></TableCell>
+                            <TableCell className="text-center py-3"><ScoreCell value={w.avgProd}/></TableCell>
+                            <TableCell className="text-center py-3"><ScoreCell value={w.avgPrec}/></TableCell>
+                            <TableCell className="text-center py-3 pr-6"><ScoreCell value={w.avgAten}/></TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

@@ -55,57 +55,30 @@ function avg(nums: (number | null)[]): number | null {
 
 /* ─────────────────────── Period logic ─────────────────────── */
 type Period = {
-  dates: string[];           // response dates
-  purchaseDates: string[];   // purchase dates (response date - 1)
-  anchor: string;
-  rangeLabel: string;        // "Vie 04/07 — Dom 06/07/2026"
-  purchaseRangeLabel: string;// "Jue 03/07 — Sáb 05/07/2026"
-  anchorLabel: string;       // "Lunes 07/07/2026"
-  dayNames: string[];
+  dates: string[];     // 7 días: lunes a domingo
+  anchor: string;      // el lunes de la semana
+  rangeLabel: string;  // "Lun 21/07 — Dom 27/07/2026"
+  anchorLabel: string; // "Semana del 21/07/2026"
 };
 
 function getPeriod(anchor: string): Period {
-  const day = dayNum(anchor);
+  // anchor debe ser un lunes
+  const dates = Array.from({ length: 7 }, (_, i) => offsetDate(anchor, i));
   const [y] = anchor.split('-');
-
-  if (day === 1) { // Lunes → respuestas Vie+Sáb+Dom, compras Jue+Vie+Sáb
-    const dates = [offsetDate(anchor, -3), offsetDate(anchor, -2), offsetDate(anchor, -1)];
-    const pd    = dates.map(d => offsetDate(d, -1));
-    return {
-      dates, purchaseDates: pd, anchor,
-      rangeLabel:         `Vie ${dFmtShort(dates[0])} — Dom ${dFmtShort(dates[2])}/${y}`,
-      purchaseRangeLabel: `Jue ${dFmtShort(pd[0])} — Sáb ${dFmtShort(pd[2])}/${y}`,
-      anchorLabel: `${dayName(anchor)} ${dFmt(anchor)}`,
-      dayNames: ['Viernes','Sábado','Domingo'],
-    };
-  }
-  if (day === 4) { // Jueves → respuestas Mar+Mié+Jue, compras Lun+Mar+Mié
-    const dates = [offsetDate(anchor, -2), offsetDate(anchor, -1), anchor];
-    const pd    = dates.map(d => offsetDate(d, -1));
-    return {
-      dates, purchaseDates: pd, anchor,
-      rangeLabel:         `Mar ${dFmtShort(dates[0])} — Jue ${dFmtShort(anchor)}/${y}`,
-      purchaseRangeLabel: `Lun ${dFmtShort(pd[0])} — Mié ${dFmtShort(pd[2])}/${y}`,
-      anchorLabel: `${dayName(anchor)} ${dFmt(anchor)}`,
-      dayNames: ['Martes','Miércoles','Jueves'],
-    };
-  }
-  // Otro día
-  const pd = [offsetDate(anchor, -1)];
   return {
-    dates: [anchor], purchaseDates: pd, anchor,
-    rangeLabel:         `${dayName(anchor)} ${dFmt(anchor)}`,
-    purchaseRangeLabel: `${dayName(pd[0])} ${dFmt(pd[0])}`,
-    anchorLabel: `${dayName(anchor)} ${dFmt(anchor)}`,
-    dayNames: [dayName(anchor)],
+    dates,
+    anchor,
+    rangeLabel:  `Lun ${dFmtShort(dates[0])} — Dom ${dFmtShort(dates[6])}/${y}`,
+    anchorLabel: `Semana del ${dFmt(anchor)}`,
   };
 }
 
 function getDefaultAnchor(): string {
   const now = new Date(Date.now() - 3 * 60 * 60 * 1000); // Argentina UTC-3
-  const day = now.getUTCDay();
-  // Días hacia atrás para llegar al Mon(1) o Thu(4) más reciente
-  const back = [3, 0, 1, 2, 0, 1, 2][day];
+  const day = now.getUTCDay(); // 0=Dom … 6=Sáb
+  // Días hacia atrás para llegar al lunes de la semana pasada completa
+  // Dom=6, Lun=7, Mar=8, Mié=9, Jue=10, Vie=11, Sáb=12
+  const back = day === 0 ? 6 : day + 6;
   const dt = new Date(now.getTime() - back * 86400000);
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
 }
@@ -352,7 +325,7 @@ function ScoreBar({ label, value, total }: { label: string; value: number | null
 function PageHeader({ period, subtitle, hideDates }: { period: Period; subtitle?: string; hideDates?: boolean }) {
   return (
     <div className="py-4 mb-6 border-b-2" style={{ borderColor: P }}>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="rounded-lg p-1.5" style={{ background: P }}>
             <Image src="/logo-clubuaa.png" alt="Club UAA" width={60} height={22} style={{ objectFit: 'contain' }} />
@@ -362,25 +335,13 @@ function PageHeader({ period, subtitle, hideDates }: { period: Period; subtitle?
             <p className="text-xs text-gray-500 mt-0.5">{subtitle ?? `Emitido el ${period.anchorLabel}`}</p>
           </div>
         </div>
+        {!hideDates && (
+          <div className="text-right">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Semana analizada</p>
+            <p className="text-sm font-black" style={{ color: P }}>{period.rangeLabel}</p>
+          </div>
+        )}
       </div>
-      {/* Period breakdown row */}
-      {!hideDates && (
-        <div className="flex gap-6 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Compras analizadas</span>
-            <span className="text-xs font-black px-2 py-0.5 rounded" style={{ background: P + '15', color: P }}>
-              {period.purchaseRangeLabel}
-            </span>
-          </div>
-          <div className="w-px bg-gray-200 self-stretch" />
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Respuestas recibidas</span>
-            <span className="text-xs font-black px-2 py-0.5 rounded" style={{ background: '#6366f115', color: '#4f46e5' }}>
-              {period.rangeLabel}
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

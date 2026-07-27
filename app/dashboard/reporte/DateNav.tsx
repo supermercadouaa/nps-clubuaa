@@ -17,15 +17,13 @@ function anchorDay(fecha: string): number {
 function prevAnchor(fecha: string): string {
   const [y, m, d] = fecha.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
-  const day = dt.getUTCDay();
-  dt.setUTCDate(dt.getUTCDate() + (day === 1 ? -4 : day === 4 ? -3 : -1));
+  dt.setUTCDate(dt.getUTCDate() - 7);
   return isoDate(dt);
 }
 function nextAnchor(fecha: string): string {
   const [y, m, d] = fecha.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
-  const day = dt.getUTCDay();
-  dt.setUTCDate(dt.getUTCDate() + (day === 1 ? 3 : day === 4 ? 4 : 1));
+  dt.setUTCDate(dt.getUTCDate() + 7);
   return isoDate(dt);
 }
 function off(fecha: string, days: number): string {
@@ -35,11 +33,8 @@ function off(fecha: string, days: number): string {
   return isoDate(dt);
 }
 function periodLabel(fecha: string): string {
-  const day = anchorDay(fecha);
   const y = fecha.split('-')[0];
-  if (day === 1) return `Vie ${dFmt(off(fecha, -3))} — Dom ${dFmt(off(fecha, -1))}/${y}`;
-  if (day === 4) return `Mar ${dFmt(off(fecha, -2))} — Jue ${dFmt(fecha)}/${y}`;
-  return `${dFmt(fecha)}/${y}`;
+  return `Lun ${dFmt(fecha)} — Dom ${dFmt(off(fecha, 6))}/${y}`;
 }
 
 export default function DateNav({ fecha }: { fecha: string }) {
