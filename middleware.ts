@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const ALLOWED_EMAILS = new Set([
-  'vmalmiron@uaa.com.ar',
-  'ndellarosa@uaa.com.ar',
-  'pdenrique@uaa.com.ar',
-  'amllandeka@uaa.com.ar',
-  'shsanchez@uaa.com.ar',
-  'jwvillalba@uaa.com.ar',
-]);
-
 function b64urlToBytes(b64url: string): ArrayBuffer {
   const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
   const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
@@ -26,7 +17,7 @@ async function verifyEdgeToken(token: string): Promise<boolean> {
     const dot = token.lastIndexOf('.');
     if (dot === -1) return false;
     const payload = token.slice(0, dot);
-    const sig = token.slice(dot + 1);
+    const sig     = token.slice(dot + 1);
 
     const key = await crypto.subtle.importKey(
       'raw',
@@ -44,11 +35,8 @@ async function verifyEdgeToken(token: string): Promise<boolean> {
     );
     if (!valid) return false;
 
-    const { email, exp } = JSON.parse(
-      new TextDecoder().decode(b64urlToBytes(payload))
-    );
+    const { exp } = JSON.parse(new TextDecoder().decode(b64urlToBytes(payload)));
     if (Date.now() > exp) return false;
-    if (!ALLOWED_EMAILS.has(email)) return false;
     return true;
   } catch {
     return false;

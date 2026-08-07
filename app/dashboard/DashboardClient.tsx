@@ -330,6 +330,15 @@ export default function DashboardClient({
           >
             Reporte PDF
           </Link>
+          {email === 'vmalmiron@uaa.com.ar' && (
+            <Link
+              href="/dashboard/admin"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)' }}
+            >
+              Usuarios
+            </Link>
+          )}
           <AutoRefresh intervalMs={30000}/>
           <LogoutButton/>
         </div>

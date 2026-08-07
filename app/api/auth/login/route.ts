@@ -1,6 +1,6 @@
-import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { createSession, isAllowed } from '@/lib/auth';
+import { createSession } from '@/lib/auth';
+import { getUserByEmail, verifyPassword } from '@/lib/usuarios';
 import { Pool } from 'pg';
 
 const pool = new Pool({
@@ -8,7 +8,6 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// In-memory rate limiter: max 5 attempts per IP per 15 minutes
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 15 * 60 * 1000;
@@ -41,32 +40,14 @@ export async function POST(req: NextRequest) {
     return DENY;
   }
 
-  const authPassword = process.env.AUTH_PASSWORD;
-  if (!authPassword) throw new Error('AUTH_PASSWORD env var is not set');
-
   const emailNorm = (email ?? '').toLowerCase().trim();
-  const passA = Buffer.from(password ?? '');
-  const passB = Buffer.from(authPassword);
-  const passOk =
-    passA.length === passB.length && crypto.timingSafeEqual(passA, passB);
+  const user = await getUserByEmail(emailNorm);
+  if (!user || !user.activo) return DENY;
+  if (!verifyPassword(password ?? '', user.passwordHash)) return DENY;
 
-  if (!isAllowed(emailNorm) || !passOk) {
-    return DENY;
-  }
-
-  // Log successful login
   try {
     const client = await pool.connect();
     try {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS nps_dashboard_logs (
-          id        SERIAL PRIMARY KEY,
-          email     VARCHAR(100) NOT NULL,
-          accion    VARCHAR(20)  NOT NULL,
-          ip        VARCHAR(50),
-          created_at TIMESTAMP DEFAULT NOW()
-        )
-      `);
       await client.query(
         `INSERT INTO nps_dashboard_logs (email, accion, ip) VALUES ($1, 'login', $2)`,
         [emailNorm, ip]
