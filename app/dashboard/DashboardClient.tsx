@@ -255,10 +255,13 @@ export default function DashboardClient({
   sucursalesAll: { code: string; name: string }[];
 }) {
   const [sucursal, setSucursalRaw] = useState('');
-  const [selectedDate, setSelectedDate] = useState('');
+  const [dateFrom, setDateFrom]   = useState('');
+  const [dateTo,   setDateTo]     = useState('');
   const [search, setSearch] = useState('');
 
-  function setSucursal(v: string) { setSucursalRaw(v); setSelectedDate(''); }
+  function setSucursal(v: string) { setSucursalRaw(v); }
+
+  function clearFilters() { setSucursalRaw(''); setDateFrom(''); setDateTo(''); }
 
   /* ── Sucursal dropdown: ref_sucursal + those actually in data ── */
   const sucursales = useMemo(() => {
@@ -271,15 +274,15 @@ export default function DashboardClient({
     sucursal ? rows.filter(r => r.c_sucursal === sucursal) : rows,
     [rows, sucursal]);
 
-  const availableDates = useMemo(() => {
-    const keys = new Set<string>();
-    bySucursal.forEach(r => keys.add(getDateKey(r.respondido_at)));
-    return Array.from(keys).sort().reverse();
-  }, [bySucursal]);
-
-  const filtered = useMemo(() =>
-    selectedDate ? bySucursal.filter(r => getDateKey(r.respondido_at) === selectedDate) : bySucursal,
-    [bySucursal, selectedDate]);
+  const filtered = useMemo(() => {
+    if (!dateFrom && !dateTo) return bySucursal;
+    return bySucursal.filter(r => {
+      const d = getDateKey(r.respondido_at);
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo   && d > dateTo)   return false;
+      return true;
+    });
+  }, [bySucursal, dateFrom, dateTo]);
 
   const metrics    = useMemo(() => calcMetrics(filtered), [filtered]);
   const aspectos   = useMemo(() => calcAspectos(filtered, metrics.total), [filtered, metrics.total]);
@@ -306,6 +309,30 @@ export default function DashboardClient({
 
   const sucursalLabel = sucursal ? (sucursales.find(s => s.code === sucursal)?.name ?? sucursal) : null;
 
+  async function handleExport() {
+    const { utils, writeFile } = await import('xlsx');
+    const data = filtered.map(r => ({
+      'Ticket ID':           r.ticket_id > 0 ? r.ticket_id : '',
+      'Sucursal':            r.sucursal_nombre || '',
+      'Fecha Respuesta':     getDateKey(r.respondido_at),
+      'Hora Respuesta':      new Date(r.respondido_at).toISOString().slice(11, 16),
+      'Fecha Compra':        r.fecha_compra || '',
+      'Hora Compra':         r.hora_compra  || '',
+      'Score General':       r.score,
+      'Clasificación':       r.clasificacion,
+      'Experiencia (1-5)':   r.score_experiencia ?? '',
+      'Productos (1-5)':     r.score_productos   ?? '',
+      'Precios (1-5)':       r.score_precios     ?? '',
+      'Atención (1-5)':      r.score_atencion    ?? '',
+      'Aspectos a Mejorar':  r.aspectos_mejorar  || '',
+      'Comentario':          r.comentario        || '',
+    }));
+    const ws = utils.json_to_sheet(data);
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, 'NPS Respuestas');
+    writeFile(wb, `nps-respuestas-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   return (
     <div className="min-h-screen bg-muted/30">
 
@@ -317,7 +344,7 @@ export default function DashboardClient({
             <h1 className="text-white font-bold text-base leading-tight">Dashboard NPS</h1>
             <p className="text-purple-300 text-xs">
               {sucursalLabel ? `Sucursal: ${sucursalLabel}` : 'Todas las sucursales'}
-              {selectedDate ? ` · ${dateLabel(selectedDate)}` : ''}
+              {(dateFrom || dateTo) ? ` · ${dateFrom || '…'} — ${dateTo || '…'}` : ''}
             </p>
           </div>
         </div>
@@ -325,10 +352,11 @@ export default function DashboardClient({
           <span className="text-purple-300 text-xs hidden sm:inline">{email}</span>
           <Link
             href="/dashboard/reporte"
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            className="flex flex-col items-end px-3 py-1.5 rounded-lg transition-all leading-tight"
             style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)' }}
           >
-            Reporte PDF
+            <span className="text-xs font-semibold">Reporte PDF</span>
+            <span className="text-[10px] opacity-60">se emite cada lunes</span>
           </Link>
           {email === 'vmalmiron@uaa.com.ar' && (
             <Link
@@ -365,28 +393,41 @@ export default function DashboardClient({
           <div className="h-4 w-px bg-border hidden sm:block"/>
 
           <div className="flex items-center gap-1.5">
-            <Star className="w-3.5 h-3.5 text-muted-foreground"/>
-            <span className="text-xs text-muted-foreground">Fecha</span>
+            <CalendarDays className="w-3.5 h-3.5 text-muted-foreground"/>
+            <span className="text-xs text-muted-foreground">Desde</span>
           </div>
-          <Select value={selectedDate || '__all__'} onValueChange={v => setSelectedDate(v === '__all__' ? '' : v)}>
-            <SelectTrigger className="h-8 text-xs w-56 bg-white">
-              <SelectValue placeholder="Todas las fechas"/>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Todas las fechas</SelectItem>
-              {availableDates.map(k => <SelectItem key={k} value={k}>{dateLabel(k)}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+            className="h-8 px-2 text-xs rounded-md border border-border bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 tabular-nums"
+          />
+          <span className="text-xs text-muted-foreground">—</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+            className="h-8 px-2 text-xs rounded-md border border-border bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 tabular-nums"
+          />
 
-          {(sucursal || selectedDate) && (
+          {(sucursal || dateFrom || dateTo) && (
             <button
-              onClick={() => { setSucursalRaw(''); setSelectedDate(''); }}
+              onClick={clearFilters}
               className="h-8 px-3 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors"
             >
-              Limpiar filtros
+              Limpiar
             </button>
           )}
-          <div className="ml-auto text-xs text-muted-foreground">{total} respuesta{total !== 1 ? 's' : ''}</div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{total} respuesta{total !== 1 ? 's' : ''}</span>
+            <button
+              onClick={handleExport}
+              className="h-8 px-3 rounded-md border border-border bg-white text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors"
+            >
+              Descargar .XLSX
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
