@@ -114,12 +114,13 @@ async function fetchData(): Promise<{ rows: Row[]; enviados: number; sucursalesA
   const rows: Row[] = npsRows.map((row) => {
       const m = row.ticket_id > 0 ? mysqlMap.get(Number(row.ticket_id)) : undefined;
       const rawAt = row.respondido_at;
+      const FALLBACK_DATE = '2026-06-30T00:00:00.000Z';
       let safeIso: string;
       if (!rawAt) {
-        safeIso = new Date(0).toISOString();
+        safeIso = FALLBACK_DATE;
       } else {
         const at = rawAt instanceof Date ? rawAt : new Date(String(rawAt));
-        safeIso = !isNaN(at.getTime()) ? at.toISOString() : new Date(0).toISOString();
+        safeIso = !isNaN(at.getTime()) ? at.toISOString() : FALLBACK_DATE;
       }
       return {
         score:             Number(row.score),
