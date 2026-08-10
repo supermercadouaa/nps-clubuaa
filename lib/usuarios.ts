@@ -196,3 +196,27 @@ export async function useSetupToken(token: string, newPassword: string): Promise
   );
   return true;
 }
+
+// Returns true if the user exists, is active, but has no password set yet
+export async function checkUserHasNoPassword(email: string): Promise<boolean> {
+  await ensureTable();
+  const { rows } = await pool.query(
+    `SELECT password_hash FROM nps_usuarios WHERE email = $1 AND activo = TRUE`,
+    [email]
+  );
+  if (!rows[0]) return false;
+  return !rows[0].password_hash;
+}
+
+// Sets the password only if the user has no password yet (first-login activation)
+export async function activateUser(email: string, password: string): Promise<boolean> {
+  await ensureTable();
+  const result = await pool.query(
+    `UPDATE nps_usuarios
+       SET password_hash = $1, setup_token = NULL, setup_token_expires = NULL
+     WHERE email = $2 AND activo = TRUE AND (password_hash IS NULL OR password_hash = '')
+     RETURNING id`,
+    [hashPassword(password), email.toLowerCase().trim()]
+  );
+  return (result.rowCount ?? 0) > 0;
+}

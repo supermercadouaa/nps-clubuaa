@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { TrendingUp, TrendingDown, Minus, Star, MessageSquare, BarChart3, MapPin, Send, Search, CalendarDays } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Star, MessageSquare, BarChart3, MapPin, Send, Search, CalendarDays, ChevronDown, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AutoRefresh from './AutoRefresh';
 import LogoutButton from './LogoutButton';
@@ -254,14 +253,28 @@ export default function DashboardClient({
   enviados: number;
   sucursalesAll: { code: string; name: string }[];
 }) {
-  const [sucursal, setSucursalRaw] = useState('');
-  const [dateFrom, setDateFrom]   = useState('');
-  const [dateTo,   setDateTo]     = useState('');
-  const [search, setSearch] = useState('');
+  const [sucursalFilter, setSucursalFilter] = useState<string[]>([]);
+  const [sucursalOpen,   setSucursalOpen]   = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo,   setDateTo]   = useState('');
+  const [search, setSearch]     = useState('');
 
-  function setSucursal(v: string) { setSucursalRaw(v); }
+  const sucursalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handleOut(e: MouseEvent) {
+      if (sucursalRef.current && !sucursalRef.current.contains(e.target as Node)) {
+        setSucursalOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOut);
+    return () => document.removeEventListener('mousedown', handleOut);
+  }, []);
 
-  function clearFilters() { setSucursalRaw(''); setDateFrom(''); setDateTo(''); }
+  function toggleSucursal(code: string) {
+    setSucursalFilter(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
+  }
+
+  function clearFilters() { setSucursalFilter([]); setDateFrom(''); setDateTo(''); }
 
   /* ── Sucursal dropdown: ref_sucursal + those actually in data ── */
   const sucursales = useMemo(() => {
@@ -271,8 +284,8 @@ export default function DashboardClient({
   }, [rows, sucursalesAll]);
 
   const bySucursal = useMemo(() =>
-    sucursal ? rows.filter(r => r.c_sucursal === sucursal) : rows,
-    [rows, sucursal]);
+    sucursalFilter.length === 0 ? rows : rows.filter(r => r.c_sucursal && sucursalFilter.includes(r.c_sucursal)),
+    [rows, sucursalFilter]);
 
   const filtered = useMemo(() => {
     if (!dateFrom && !dateTo) return bySucursal;
@@ -307,7 +320,9 @@ export default function DashboardClient({
   const tasaNum = rows.filter(r => r.cliente_id > 0).length; // non-demo responses total
   const tasaPct = enviados > 0 ? Math.round((tasaNum / enviados) * 100) : 0;
 
-  const sucursalLabel = sucursal ? (sucursales.find(s => s.code === sucursal)?.name ?? sucursal) : null;
+  const sucursalLabel = sucursalFilter.length === 0 ? null
+    : sucursalFilter.length === 1 ? (sucursales.find(s => s.code === sucursalFilter[0])?.name ?? sucursalFilter[0])
+    : `${sucursalFilter.length} sucursales`;
 
   async function handleExport() {
     const { utils, writeFile } = await import('xlsx');
@@ -372,15 +387,41 @@ export default function DashboardClient({
             <MapPin className="w-3.5 h-3.5 text-muted-foreground"/>
             <span className="text-xs text-muted-foreground">Sucursal</span>
           </div>
-          <Select value={sucursal || '__all__'} onValueChange={v => setSucursal(v === '__all__' ? '' : v)}>
-            <SelectTrigger className="h-8 text-xs w-52 bg-white">
-              <SelectValue placeholder="Todas las sucursales"/>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Todas las sucursales</SelectItem>
-              {sucursales.map(s => <SelectItem key={s.code} value={s.code}>{s.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <div ref={sucursalRef} className="relative">
+            <button
+              onClick={() => setSucursalOpen(v => !v)}
+              className="h-8 px-3 text-xs rounded-md border border-border bg-white flex items-center gap-1.5 w-52 justify-between hover:bg-muted/40 transition-colors"
+            >
+              <span className="truncate text-left">
+                {sucursalFilter.length === 0 ? 'Todas las sucursales'
+                  : sucursalFilter.length === 1 ? (sucursales.find(s => s.code === sucursalFilter[0])?.name ?? sucursalFilter[0])
+                  : `${sucursalFilter.length} sucursales`}
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0"/>
+            </button>
+            {sucursalOpen && (
+              <div className="absolute top-9 left-0 z-50 w-64 bg-white border border-border rounded-md shadow-lg py-1 max-h-64 overflow-y-auto">
+                <button
+                  onClick={() => { setSucursalFilter([]); setSucursalOpen(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 text-xs text-left"
+                >
+                  <Check className={`w-3.5 h-3.5 shrink-0 ${sucursalFilter.length === 0 ? 'text-primary' : 'text-transparent'}`}/>
+                  <span>Todas las sucursales</span>
+                </button>
+                <div className="border-t border-border/40 my-1"/>
+                {sucursales.map(s => (
+                  <button
+                    key={s.code}
+                    onClick={() => toggleSucursal(s.code)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 text-xs text-left"
+                  >
+                    <Check className={`w-3.5 h-3.5 shrink-0 ${sucursalFilter.includes(s.code) ? 'text-primary' : 'text-transparent'}`}/>
+                    <span className="truncate">{s.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="h-4 w-px bg-border hidden sm:block"/>
 
@@ -402,7 +443,7 @@ export default function DashboardClient({
             className="h-8 px-2 text-xs rounded-md border border-border bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 tabular-nums"
           />
 
-          {(sucursal || dateFrom || dateTo) && (
+          {(sucursalFilter.length > 0 || dateFrom || dateTo) && (
             <button
               onClick={clearFilters}
               className="h-8 px-3 text-xs rounded-md border border-border text-muted-foreground hover:bg-muted transition-colors"
@@ -595,13 +636,13 @@ export default function DashboardClient({
                           <TableRow
                             key={s.code}
                             className="border-border/30 cursor-pointer hover:bg-muted/40 transition-colors"
-                            onClick={() => setSucursal(sucursal === s.code ? '' : s.code)}
+                            onClick={() => toggleSucursal(s.code)}
                           >
                             <TableCell className="pl-6 py-2.5">
                               <div className="flex items-center gap-2">
                                 <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center shrink-0">{i+1}</span>
                                 <span className="text-sm font-medium">{s.name}</span>
-                                {sucursal === s.code && <Badge className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-0 hover:bg-primary/10">activa</Badge>}
+                                {sucursalFilter.includes(s.code) && <Badge className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-0 hover:bg-primary/10">activa</Badge>}
                               </div>
                             </TableCell>
                             <TableCell className="text-center py-2.5">

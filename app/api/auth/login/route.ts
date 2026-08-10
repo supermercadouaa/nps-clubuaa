@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSession } from '@/lib/auth';
-import { getUserByEmail, verifyPassword } from '@/lib/usuarios';
+import { getUserByEmail, verifyPassword, checkUserHasNoPassword } from '@/lib/usuarios';
 import { Pool } from 'pg';
 
 const pool = new Pool({
@@ -42,7 +42,12 @@ export async function POST(req: NextRequest) {
 
   const emailNorm = (email ?? '').toLowerCase().trim();
   const user = await getUserByEmail(emailNorm);
-  if (!user || !user.activo) return DENY;
+  if (!user) {
+    const noPassword = await checkUserHasNoPassword(emailNorm);
+    if (noPassword) return NextResponse.json({ needs_activation: true });
+    return DENY;
+  }
+  if (!user.activo) return DENY;
   if (!verifyPassword(password ?? '', user.passwordHash)) return DENY;
 
   try {

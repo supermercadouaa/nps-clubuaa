@@ -207,7 +207,7 @@ export default function AdminClient({
                 </label>
                 <input
                   className={`${inp} w-36`} type="text"
-                  placeholder="Dejar vacío → link"
+                  placeholder="Dejar vacío → 1er login"
                   value={newPwd} onChange={e => setNewPwd(e.target.value)}
                 />
               </div>
@@ -228,7 +228,7 @@ export default function AdminClient({
               {addErr && <span className="text-xs text-red-500 self-end">{addErr}</span>}
             </form>
             <p className="text-xs text-muted-foreground/70 mt-2">
-              Si dejás la contraseña vacía, se genera un link de activación para que el usuario elija la suya.
+              Si dejás la contraseña vacía, el usuario deberá ir al link de acceso y crear su contraseña la primera vez.
             </p>
           </CardContent>
         </Card>
@@ -439,8 +439,8 @@ export default function AdminClient({
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setSetupLink(''); setCopied(false); }}>
           <Card className="shadow-2xl border-border w-full max-w-md" onClick={e => e.stopPropagation()}>
             <CardHeader className="pb-0 pt-5 px-6">
-              <CardTitle className="text-sm font-semibold">Link de activación</CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">Mandáselo al usuario por WhatsApp o email. Válido 48 horas.</p>
+              <CardTitle className="text-sm font-semibold">Link de acceso</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Mandáselo al usuario. La primera vez que ingrese podrá crear su contraseña.</p>
             </CardHeader>
             <CardContent className="px-6 pb-6 pt-4 flex flex-col gap-3">
               <div className="rounded-lg bg-muted/60 border border-border px-3 py-2.5 text-xs font-mono text-foreground break-all select-all">

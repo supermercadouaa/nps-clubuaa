@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/lib/auth';
-import { listUsers, createUser, updatePassword, setActivo, deleteUser, createSetupToken, setExcludedSucursales } from '@/lib/usuarios';
+import { listUsers, createUser, updatePassword, setActivo, deleteUser, setExcludedSucursales } from '@/lib/usuarios';
 
 const ADMIN_EMAIL = 'vmalmiron@uaa.com.ar';
 
@@ -28,9 +28,8 @@ export async function POST(req: NextRequest) {
     await createUser(email, password ?? '', role ?? 'viewer');
     let setupLink: string | null = null;
     if (!password) {
-      const setupToken = await createSetupToken(email);
       const origin = req.headers.get('origin') ?? 'https://encuesta.clubuaa.ar';
-      setupLink = `${origin}/activar?token=${setupToken}`;
+      setupLink = `${origin}/dashboard/login`;
     }
     return NextResponse.json({ ok: true, setupLink });
   } catch (e: unknown) {
