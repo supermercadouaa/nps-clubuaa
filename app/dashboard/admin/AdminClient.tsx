@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import LogoutButton from '@/app/dashboard/LogoutButton';
 
-type Usuario = { id: number; email: string; role: string; activo: boolean; has_password: boolean; created_at: string };
+type Usuario   = { id: number; email: string; role: string; activo: boolean; has_password: boolean; excluded_sucursales: string[]; created_at: string };
+type Sucursal  = { code: string; name: string };
 
 const UAA_PURPLE = '#3b1f8c';
 
@@ -20,9 +21,11 @@ function fmtDate(iso: string): string {
 export default function AdminClient({
   users: initial,
   currentEmail,
+  sucursales,
 }: {
   users: Usuario[];
   currentEmail: string;
+  sucursales: Sucursal[];
 }) {
   const [users, setUsers]       = useState(initial);
   const [newEmail, setNewEmail] = useState('');
@@ -35,7 +38,10 @@ export default function AdminClient({
   const [saving, setSaving]     = useState(false);
   const [toast, setToast]       = useState('');
   const [setupLink, setSetupLink] = useState('');
-  const [copied, setCopied]     = useState(false);
+  const [copied, setCopied]       = useState(false);
+  const [restEmail, setRestEmail] = useState<string | null>(null);
+  const [excluded, setExcluded]   = useState<string[]>([]);
+  const [savingRest, setSavingRest] = useState(false);
 
   async function refresh() {
     const r = await fetch('/api/admin/usuarios');
@@ -104,6 +110,32 @@ export default function AdminClient({
     });
     await refresh();
     flash(`${email} eliminado`);
+  }
+
+  function openRestrictions(u: Usuario) {
+    setRestEmail(u.email);
+    setExcluded([...u.excluded_sucursales]);
+  }
+
+  function toggleSucursal(code: string) {
+    setExcluded(prev =>
+      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
+    );
+  }
+
+  async function saveRestrictions(e: React.FormEvent) {
+    e.preventDefault();
+    if (!restEmail) return;
+    setSavingRest(true);
+    await fetch('/api/admin/usuarios', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: restEmail, sucursalesExcluidas: excluded }),
+    });
+    await refresh();
+    setSavingRest(false);
+    setRestEmail(null);
+    flash(`Restricciones actualizadas para ${restEmail}`);
   }
 
   async function handleChangePwd(e: React.FormEvent) {
@@ -237,6 +269,11 @@ export default function AdminClient({
                               Sin contraseña
                             </Badge>
                           )}
+                          {u.excluded_sucursales.length > 0 && (
+                            <Badge className="text-[10px] px-1.5 bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-50">
+                              {u.excluded_sucursales.length} suc. restringida{u.excluded_sucursales.length !== 1 ? 's' : ''}
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-center py-3">
@@ -254,6 +291,12 @@ export default function AdminClient({
                       </TableCell>
                       <TableCell className="text-center py-3 pr-6">
                         <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                          <button
+                            onClick={() => openRestrictions(u)}
+                            className="h-7 px-2.5 rounded-md text-xs font-medium border border-orange-200 text-orange-600 hover:bg-orange-50 transition-colors"
+                          >
+                            Sucursales
+                          </button>
                           <button
                             onClick={() => handleGenLink(u.email)}
                             className="h-7 px-2.5 rounded-md text-xs font-medium border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
@@ -296,6 +339,66 @@ export default function AdminClient({
           </CardContent>
         </Card>
       </div>
+
+      {/* Sucursal restrictions modal */}
+      {restEmail && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setRestEmail(null)}>
+          <Card className="shadow-2xl border-border w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <CardHeader className="pb-0 pt-5 px-6 shrink-0">
+              <CardTitle className="text-sm font-semibold">Restricciones de sucursal</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1 font-mono">{restEmail}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Las sucursales marcadas <strong>NO</strong> serán visibles para este usuario.
+              </p>
+            </CardHeader>
+            <CardContent className="px-6 pt-4 pb-0 overflow-y-auto flex-1">
+              <form id="rest-form" onSubmit={saveRestrictions}>
+                <div className="space-y-1.5">
+                  {sucursales.map(s => (
+                    <label key={s.code} className="flex items-center gap-2.5 py-1 cursor-pointer hover:bg-muted/40 rounded px-1">
+                      <input
+                        type="checkbox"
+                        checked={excluded.includes(s.code)}
+                        onChange={() => toggleSucursal(s.code)}
+                        className="w-4 h-4 accent-orange-500"
+                      />
+                      <span className="text-sm">{s.name}</span>
+                      <span className="text-xs text-muted-foreground ml-auto font-mono">{s.code}</span>
+                    </label>
+                  ))}
+                </div>
+              </form>
+            </CardContent>
+            <div className="px-6 pb-6 pt-4 shrink-0 flex gap-2 border-t border-border/40 mt-3">
+              {excluded.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setExcluded([])}
+                  className="h-9 px-3 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:bg-muted"
+                >
+                  Quitar todas
+                </button>
+              )}
+              <button
+                form="rest-form"
+                type="submit"
+                disabled={savingRest}
+                className="flex-1 h-9 rounded-lg text-sm font-semibold text-white hover:opacity-90"
+                style={{ background: UAA_PURPLE }}
+              >
+                {savingRest ? 'Guardando…' : `Guardar${excluded.length > 0 ? ` (${excluded.length} excluidas)` : ''}`}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRestEmail(null)}
+                className="flex-1 h-9 rounded-lg text-sm font-semibold border border-border text-muted-foreground hover:bg-muted"
+              >
+                Cancelar
+              </button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Change password modal */}
       {editEmail && (

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/lib/auth';
-import { listUsers, createUser, updatePassword, setActivo, deleteUser, createSetupToken } from '@/lib/usuarios';
+import { listUsers, createUser, updatePassword, setActivo, deleteUser, createSetupToken, setExcludedSucursales } from '@/lib/usuarios';
 
 const ADMIN_EMAIL = 'vmalmiron@uaa.com.ar';
 
@@ -44,10 +44,11 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   if (!getAdminEmail(req)) return FORBIDDEN;
-  const { email, password, activo } = await req.json();
+  const { email, password, activo, sucursalesExcluidas } = await req.json();
   if (!email) return NextResponse.json({ error: 'email requerido' }, { status: 400 });
-  if (password !== undefined) await updatePassword(email, password);
-  if (activo  !== undefined) await setActivo(email, activo);
+  if (password             !== undefined) await updatePassword(email, password);
+  if (activo               !== undefined) await setActivo(email, activo);
+  if (sucursalesExcluidas  !== undefined) await setExcludedSucursales(email, sucursalesExcluidas);
   return NextResponse.json({ ok: true });
 }
 

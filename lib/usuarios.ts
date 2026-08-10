@@ -30,6 +30,7 @@ export type Usuario = {
   role: string;
   activo: boolean;
   has_password: boolean;
+  excluded_sucursales: string[];
   created_at: string;
 };
 
@@ -52,6 +53,7 @@ export async function ensureTable(): Promise<void> {
     // Idempotent migrations — run every cold start
     await client.query(`ALTER TABLE nps_usuarios ADD COLUMN IF NOT EXISTS setup_token VARCHAR(64)`);
     await client.query(`ALTER TABLE nps_usuarios ADD COLUMN IF NOT EXISTS setup_token_expires TIMESTAMP`);
+    await client.query(`ALTER TABLE nps_usuarios ADD COLUMN IF NOT EXISTS sucursales_excluidas TEXT`);
 
     const { rows: [{ count }] } = await client.query('SELECT COUNT(*) FROM nps_usuarios');
     if (Number(count) === 0) {
@@ -101,16 +103,36 @@ export async function getUserByEmail(
 export async function listUsers(): Promise<Usuario[]> {
   await ensureTable();
   const { rows } = await pool.query(
-    `SELECT id, email, role, activo, password_hash, created_at FROM nps_usuarios ORDER BY created_at`
+    `SELECT id, email, role, activo, password_hash, sucursales_excluidas, created_at
+     FROM nps_usuarios ORDER BY created_at`
   );
   return rows.map(r => ({
-    id:           r.id,
-    email:        r.email,
-    role:         r.role,
-    activo:       r.activo,
-    has_password: Boolean(r.password_hash),
-    created_at:   r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    id:                  r.id,
+    email:               r.email,
+    role:                r.role,
+    activo:              r.activo,
+    has_password:        Boolean(r.password_hash),
+    excluded_sucursales: r.sucursales_excluidas
+      ? (r.sucursales_excluidas as string).split(',').filter(Boolean)
+      : [],
+    created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
   }));
+}
+
+export async function getUserExcludedSucursales(email: string): Promise<string[]> {
+  const { rows } = await pool.query(
+    `SELECT sucursales_excluidas FROM nps_usuarios WHERE email = $1`,
+    [email]
+  );
+  if (!rows[0]?.sucursales_excluidas) return [];
+  return (rows[0].sucursales_excluidas as string).split(',').filter(Boolean);
+}
+
+export async function setExcludedSucursales(email: string, codes: string[]): Promise<void> {
+  await pool.query(
+    `UPDATE nps_usuarios SET sucursales_excluidas = $1 WHERE email = $2`,
+    [codes.length > 0 ? codes.join(',') : null, email.toLowerCase().trim()]
+  );
 }
 
 // password is optional — if empty, user must activate via setup link

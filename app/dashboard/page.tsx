@@ -6,6 +6,7 @@ import type { RowDataPacket } from 'mysql2';
 import { verifySession } from '@/lib/auth';
 import { getPool } from '@/lib/mssql';
 import mysqlPool from '@/lib/mysql';
+import { getUserExcludedSucursales } from '@/lib/usuarios';
 import DashboardClient, { type Row } from './DashboardClient';
 
 // Normalize sucursal codes: strip leading zeros so '0', '00', '000' all become '0'
@@ -152,6 +153,17 @@ export default async function DashboardPage() {
   const email = token ? verifySession(token) : null;
   if (!email) redirect('/dashboard/login');
 
-  const { rows, enviados, sucursalesAll } = await fetchData();
-  return <DashboardClient rows={rows} email={email} enviados={enviados} sucursalesAll={sucursalesAll} />;
+  const [{ rows, enviados, sucursalesAll }, excluded] = await Promise.all([
+    fetchData(),
+    getUserExcludedSucursales(email),
+  ]);
+
+  const visibleRows = excluded.length > 0
+    ? rows.filter(r => !r.c_sucursal || !excluded.includes(r.c_sucursal))
+    : rows;
+  const visibleSucursales = excluded.length > 0
+    ? sucursalesAll.filter(s => !excluded.includes(s.code))
+    : sucursalesAll;
+
+  return <DashboardClient rows={visibleRows} email={email} enviados={enviados} sucursalesAll={visibleSucursales} />;
 }
