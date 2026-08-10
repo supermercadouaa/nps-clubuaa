@@ -350,14 +350,6 @@ export default function DashboardClient({
         </div>
         <div className="flex items-center gap-2.5">
           <span className="text-purple-300 text-xs hidden sm:inline">{email}</span>
-          <Link
-            href="/dashboard/reporte"
-            className="flex flex-col items-end px-3 py-1.5 rounded-lg transition-all leading-tight"
-            style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)' }}
-          >
-            <span className="text-xs font-semibold">Reporte PDF</span>
-            <span className="text-[10px] opacity-60">se emite cada lunes</span>
-          </Link>
           {email === 'vmalmiron@uaa.com.ar' && (
             <Link
               href="/dashboard/admin"
