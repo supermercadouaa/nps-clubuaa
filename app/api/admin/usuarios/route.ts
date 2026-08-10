@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySession } from '@/lib/auth';
-import { listUsers, createUser, updatePassword, setActivo, deleteUser } from '@/lib/usuarios';
+import { listUsers, createUser, updatePassword, setActivo, deleteUser, createSetupToken } from '@/lib/usuarios';
 
 const ADMIN_EMAIL = 'vmalmiron@uaa.com.ar';
 
@@ -23,12 +23,16 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!getAdminEmail(req)) return FORBIDDEN;
   const { email, password, role } = await req.json();
-  if (!email || !password) {
-    return NextResponse.json({ error: 'email y password requeridos' }, { status: 400 });
-  }
+  if (!email) return NextResponse.json({ error: 'email requerido' }, { status: 400 });
   try {
-    await createUser(email, password, role ?? 'viewer');
-    return NextResponse.json({ ok: true });
+    await createUser(email, password ?? '', role ?? 'viewer');
+    let setupLink: string | null = null;
+    if (!password) {
+      const setupToken = await createSetupToken(email);
+      const origin = req.headers.get('origin') ?? 'https://encuesta.clubuaa.ar';
+      setupLink = `${origin}/activar?token=${setupToken}`;
+    }
+    return NextResponse.json({ ok: true, setupLink });
   } catch (e: unknown) {
     const pg = e as { code?: string };
     if (pg?.code === '23505') {

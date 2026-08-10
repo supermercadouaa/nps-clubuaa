@@ -29,6 +29,7 @@ export type Usuario = {
   email: string;
   role: string;
   activo: boolean;
+  has_password: boolean;
   created_at: string;
 };
 
@@ -42,16 +43,18 @@ export async function ensureTable(): Promise<void> {
       CREATE TABLE IF NOT EXISTS nps_usuarios (
         id            SERIAL PRIMARY KEY,
         email         VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
+        password_hash VARCHAR(255) NOT NULL DEFAULT '',
         role          VARCHAR(20)  NOT NULL DEFAULT 'viewer',
         activo        BOOLEAN      NOT NULL DEFAULT TRUE,
         created_at    TIMESTAMP    NOT NULL DEFAULT NOW()
       )
     `);
+    // Idempotent migrations — run every cold start
+    await client.query(`ALTER TABLE nps_usuarios ADD COLUMN IF NOT EXISTS setup_token VARCHAR(64)`);
+    await client.query(`ALTER TABLE nps_usuarios ADD COLUMN IF NOT EXISTS setup_token_expires TIMESTAMP`);
+
     const { rows: [{ count }] } = await client.query('SELECT COUNT(*) FROM nps_usuarios');
     if (Number(count) === 0) {
-      // Passwords come from env vars so they're never in source code.
-      // Set SEED_ADMIN_PASSWORD and SEED_DEFAULT_PASSWORD in Vercel before first deploy.
       const adminPwd   = process.env.SEED_ADMIN_PASSWORD;
       const defaultPwd = process.env.SEED_DEFAULT_PASSWORD;
       if (adminPwd && defaultPwd) {
@@ -69,7 +72,7 @@ export async function ensureTable(): Promise<void> {
               `INSERT INTO nps_usuarios (email, password_hash, role) VALUES ($1, $2, $3)`,
               [u.email, hashPassword(u.password), u.role]
             );
-          } catch { /* race condition: another instance seeded first */ }
+          } catch { /* race condition */ }
         }
       } else {
         console.warn('[nps_usuarios] SEED_ADMIN_PASSWORD / SEED_DEFAULT_PASSWORD no definidas — tabla vacía');
@@ -90,34 +93,38 @@ export async function getUserByEmail(
     [email]
   );
   if (!rows[0]) return null;
+  // Empty hash = user created without password (activation pending) — can't log in
+  if (!rows[0].password_hash) return null;
   return { passwordHash: rows[0].password_hash, activo: rows[0].activo, role: rows[0].role };
 }
 
 export async function listUsers(): Promise<Usuario[]> {
   await ensureTable();
   const { rows } = await pool.query(
-    `SELECT id, email, role, activo, created_at FROM nps_usuarios ORDER BY created_at`
+    `SELECT id, email, role, activo, password_hash, created_at FROM nps_usuarios ORDER BY created_at`
   );
   return rows.map(r => ({
-    id:         r.id,
-    email:      r.email,
-    role:       r.role,
-    activo:     r.activo,
-    created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    id:           r.id,
+    email:        r.email,
+    role:         r.role,
+    activo:       r.activo,
+    has_password: Boolean(r.password_hash),
+    created_at:   r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
   }));
 }
 
-export async function createUser(email: string, password: string, role = 'viewer'): Promise<void> {
+// password is optional — if empty, user must activate via setup link
+export async function createUser(email: string, password = '', role = 'viewer'): Promise<void> {
   await ensureTable();
   await pool.query(
     `INSERT INTO nps_usuarios (email, password_hash, role) VALUES ($1, $2, $3)`,
-    [email.toLowerCase().trim(), hashPassword(password), role]
+    [email.toLowerCase().trim(), password ? hashPassword(password) : '', role]
   );
 }
 
 export async function updatePassword(email: string, password: string): Promise<void> {
   await pool.query(
-    `UPDATE nps_usuarios SET password_hash = $1 WHERE email = $2`,
+    `UPDATE nps_usuarios SET password_hash = $1, setup_token = NULL, setup_token_expires = NULL WHERE email = $2`,
     [hashPassword(password), email.toLowerCase().trim()]
   );
 }
@@ -131,4 +138,39 @@ export async function setActivo(email: string, activo: boolean): Promise<void> {
 
 export async function deleteUser(email: string): Promise<void> {
   await pool.query(`DELETE FROM nps_usuarios WHERE email = $1`, [email.toLowerCase().trim()]);
+}
+
+// ── Activation tokens ────────────────────────────────────────────────────────
+
+export async function createSetupToken(email: string): Promise<string> {
+  await ensureTable();
+  const token   = crypto.randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 48 * 3600 * 1000); // 48 horas
+  await pool.query(
+    `UPDATE nps_usuarios SET setup_token = $1, setup_token_expires = $2 WHERE email = $3`,
+    [token, expires, email.toLowerCase().trim()]
+  );
+  return token;
+}
+
+export async function validateSetupToken(token: string): Promise<string | null> {
+  const { rows } = await pool.query(
+    `SELECT email, setup_token_expires FROM nps_usuarios WHERE setup_token = $1 AND activo = TRUE`,
+    [token]
+  );
+  if (!rows[0]) return null;
+  if (new Date(rows[0].setup_token_expires) < new Date()) return null;
+  return rows[0].email as string;
+}
+
+export async function useSetupToken(token: string, newPassword: string): Promise<boolean> {
+  const email = await validateSetupToken(token);
+  if (!email) return false;
+  await pool.query(
+    `UPDATE nps_usuarios
+       SET password_hash = $1, setup_token = NULL, setup_token_expires = NULL
+     WHERE email = $2`,
+    [hashPassword(newPassword), email]
+  );
+  return true;
 }

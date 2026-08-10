@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import LogoutButton from '@/app/dashboard/LogoutButton';
 
-type Usuario = { id: number; email: string; role: string; activo: boolean; created_at: string };
+type Usuario = { id: number; email: string; role: string; activo: boolean; has_password: boolean; created_at: string };
 
 const UAA_PURPLE = '#3b1f8c';
 
@@ -34,6 +34,8 @@ export default function AdminClient({
   const [editPwd, setEditPwd]   = useState('');
   const [saving, setSaving]     = useState(false);
   const [toast, setToast]       = useState('');
+  const [setupLink, setSetupLink] = useState('');
+  const [copied, setCopied]     = useState(false);
 
   async function refresh() {
     const r = await fetch('/api/admin/usuarios');
@@ -41,10 +43,7 @@ export default function AdminClient({
     setUsers(d.users);
   }
 
-  function flash(m: string) {
-    setToast(m);
-    setTimeout(() => setToast(''), 3000);
-  }
+  function flash(m: string) { setToast(m); setTimeout(() => setToast(''), 3500); }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -55,14 +54,35 @@ export default function AdminClient({
       body: JSON.stringify({ email: newEmail, password: newPwd, role: newRole }),
     });
     if (r.ok) {
+      const data = await r.json();
       setNewEmail(''); setNewPwd(''); setNewRole('viewer');
       await refresh();
-      flash('Usuario creado correctamente');
+      if (data.setupLink) {
+        setSetupLink(data.setupLink);
+      } else {
+        flash('Usuario creado correctamente');
+      }
     } else {
       const d = await r.json();
       setAddErr(d.error === 'email_duplicado' ? 'El email ya existe' : 'Error al crear usuario');
     }
     setAdding(false);
+  }
+
+  async function handleGenLink(email: string) {
+    const r = await fetch('/api/admin/setup-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const d = await r.json();
+    if (d.link) setSetupLink(d.link);
+  }
+
+  async function copyLink() {
+    await navigator.clipboard.writeText(setupLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   async function handleToggle(email: string, activo: boolean) {
@@ -128,14 +148,13 @@ export default function AdminClient({
 
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
 
-        {/* Toast */}
         {toast && (
           <div className="rounded-lg px-4 py-2.5 text-sm font-medium text-white bg-green-500 shadow-sm">
             {toast}
           </div>
         )}
 
-        {/* Add user card */}
+        {/* Add user */}
         <Card className="shadow-sm border-border/60">
           <CardHeader className="pb-0 pt-5 px-6">
             <CardTitle className="text-sm font-semibold">Agregar usuario</CardTitle>
@@ -151,11 +170,13 @@ export default function AdminClient({
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs text-muted-foreground">Contraseña</label>
+                <label className="text-xs text-muted-foreground">
+                  Contraseña <span className="text-muted-foreground/60">(opcional)</span>
+                </label>
                 <input
                   className={`${inp} w-36`} type="text"
-                  placeholder="Contraseña"
-                  value={newPwd} onChange={e => setNewPwd(e.target.value)} required
+                  placeholder="Dejar vacío → link"
+                  value={newPwd} onChange={e => setNewPwd(e.target.value)}
                 />
               </div>
               <div className="flex flex-col gap-1">
@@ -167,13 +188,16 @@ export default function AdminClient({
               </div>
               <button
                 type="submit" disabled={adding}
-                className="h-9 px-4 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-opacity mb-0"
+                className="h-9 px-4 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-opacity"
                 style={{ background: UAA_PURPLE }}
               >
                 {adding ? 'Agregando…' : '+ Agregar'}
               </button>
               {addErr && <span className="text-xs text-red-500 self-end">{addErr}</span>}
             </form>
+            <p className="text-xs text-muted-foreground/70 mt-2">
+              Si dejás la contraseña vacía, se genera un link de activación para que el usuario elija la suya.
+            </p>
           </CardContent>
         </Card>
 
@@ -194,7 +218,7 @@ export default function AdminClient({
                   <TableRow className="border-border/40 hover:bg-transparent">
                     <TableHead className="text-xs font-semibold pl-6 min-w-[220px]">Email</TableHead>
                     <TableHead className="text-xs font-semibold text-center w-24">Rol</TableHead>
-                    <TableHead className="text-xs font-semibold text-center w-24">Estado</TableHead>
+                    <TableHead className="text-xs font-semibold text-center w-28">Estado</TableHead>
                     <TableHead className="text-xs font-semibold text-center w-28">Creado</TableHead>
                     <TableHead className="text-xs font-semibold text-center pr-6">Acciones</TableHead>
                   </TableRow>
@@ -203,10 +227,15 @@ export default function AdminClient({
                   {users.map(u => (
                     <TableRow key={u.email} className="border-border/30 hover:bg-muted/20">
                       <TableCell className="pl-6 py-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium">{u.email}</span>
                           {u.email === currentEmail && (
                             <Badge className="text-[10px] px-1.5 bg-primary/10 text-primary border-0 hover:bg-primary/10">Vos</Badge>
+                          )}
+                          {!u.has_password && (
+                            <Badge className="text-[10px] px-1.5 bg-yellow-50 text-yellow-600 border border-yellow-200 hover:bg-yellow-50">
+                              Sin contraseña
+                            </Badge>
                           )}
                         </div>
                       </TableCell>
@@ -225,6 +254,12 @@ export default function AdminClient({
                       </TableCell>
                       <TableCell className="text-center py-3 pr-6">
                         <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                          <button
+                            onClick={() => handleGenLink(u.email)}
+                            className="h-7 px-2.5 rounded-md text-xs font-medium border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
+                          >
+                            Generar link
+                          </button>
                           <button
                             onClick={() => { setEditEmail(u.email); setEditPwd(''); }}
                             className="h-7 px-2.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors"
@@ -264,10 +299,7 @@ export default function AdminClient({
 
       {/* Change password modal */}
       {editEmail && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setEditEmail(null)}
-        >
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditEmail(null)}>
           <Card className="shadow-2xl border-border w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <CardHeader className="pb-0 pt-5 px-6">
               <CardTitle className="text-sm font-semibold">Cambiar contraseña</CardTitle>
@@ -275,36 +307,57 @@ export default function AdminClient({
             </CardHeader>
             <CardContent className="px-6 pb-6 pt-4">
               <form onSubmit={handleChangePwd} className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-muted-foreground">Nueva contraseña</label>
-                  <input
-                    className={`${inp} w-full`}
-                    type="text"
-                    autoFocus
-                    placeholder="Nueva contraseña"
-                    value={editPwd}
-                    onChange={e => setEditPwd(e.target.value)}
-                    required
-                  />
-                </div>
+                <input
+                  className={`${inp} w-full`} type="text" autoFocus
+                  placeholder="Nueva contraseña"
+                  value={editPwd} onChange={e => setEditPwd(e.target.value)} required
+                />
                 <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="flex-1 h-9 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-opacity"
+                  <button type="submit" disabled={saving}
+                    className="flex-1 h-9 rounded-lg text-sm font-semibold text-white hover:opacity-90"
                     style={{ background: UAA_PURPLE }}
                   >
                     {saving ? 'Guardando…' : 'Guardar'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditEmail(null)}
-                    className="flex-1 h-9 rounded-lg text-sm font-semibold border border-border text-muted-foreground hover:bg-muted transition-colors"
+                  <button type="button" onClick={() => setEditEmail(null)}
+                    className="flex-1 h-9 rounded-lg text-sm font-semibold border border-border text-muted-foreground hover:bg-muted"
                   >
                     Cancelar
                   </button>
                 </div>
               </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Setup link modal */}
+      {setupLink && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setSetupLink(''); setCopied(false); }}>
+          <Card className="shadow-2xl border-border w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <CardHeader className="pb-0 pt-5 px-6">
+              <CardTitle className="text-sm font-semibold">Link de activación</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Mandáselo al usuario por WhatsApp o email. Válido 48 horas.</p>
+            </CardHeader>
+            <CardContent className="px-6 pb-6 pt-4 flex flex-col gap-3">
+              <div className="rounded-lg bg-muted/60 border border-border px-3 py-2.5 text-xs font-mono text-foreground break-all select-all">
+                {setupLink}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={copyLink}
+                  className="flex-1 h-9 rounded-lg text-sm font-semibold text-white transition-colors"
+                  style={{ background: copied ? '#22c55e' : UAA_PURPLE }}
+                >
+                  {copied ? '✓ Copiado' : 'Copiar link'}
+                </button>
+                <button
+                  onClick={() => { setSetupLink(''); setCopied(false); }}
+                  className="flex-1 h-9 rounded-lg text-sm font-semibold border border-border text-muted-foreground hover:bg-muted"
+                >
+                  Cerrar
+                </button>
+              </div>
             </CardContent>
           </Card>
         </div>
