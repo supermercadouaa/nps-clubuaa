@@ -5,17 +5,28 @@ import { useEffect, useState } from 'react';
 
 const UAA_PURPLE = '#3b1f8c';
 
-export default function AutoRefresh({ intervalMs = 30000 }: { intervalMs?: number }) {
+export default function AutoRefresh({ intervalMs = 60000 }: { intervalMs?: number }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   useEffect(() => {
-    const t = setInterval(() => {
+    function tick() {
       router.refresh();
       setLastUpdate(new Date());
+    }
+    // No refrescar mientras la pestaña está oculta; al volver, actualizar si pasó el intervalo
+    let last = Date.now();
+    const t = setInterval(() => {
+      if (document.hidden) return;
+      last = Date.now();
+      tick();
     }, intervalMs);
-    return () => clearInterval(t);
+    function onVisible() {
+      if (!document.hidden && Date.now() - last >= intervalMs) { last = Date.now(); tick(); }
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, [router, intervalMs]);
 
   function handleManual() {

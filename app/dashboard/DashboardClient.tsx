@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useDeferredValue } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { TrendingUp, TrendingDown, Minus, Star, MessageSquare, BarChart3, MapPin, Send, Search, CalendarDays, ChevronDown, Check } from 'lucide-react';
@@ -258,6 +258,8 @@ export default function DashboardClient({
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo,   setDateTo]   = useState('');
   const [search, setSearch]     = useState('');
+  const deferredSearch = useDeferredValue(search);
+  const [comLimit, setComLimit] = useState(50);
 
   const sucursalRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -303,14 +305,14 @@ export default function DashboardClient({
   const byWeek     = useMemo(() => calcByWeek(rows), [rows]);
   const comentarios = useMemo(() => {
     const withText = filtered.filter(r => r.comentario?.trim());
-    if (!search.trim()) return withText;
-    const q = search.trim().toLowerCase();
+    if (!deferredSearch.trim()) return withText;
+    const q = deferredSearch.trim().toLowerCase();
     return withText.filter(r =>
       r.comentario?.toLowerCase().includes(q) ||
       r.sucursal_nombre?.toLowerCase().includes(q) ||
       String(r.ticket_id).includes(q)
     );
-  }, [filtered, search]);
+  }, [filtered, deferredSearch]);
   const recientes   = filtered.slice(0, 10);
   const maxAspecto  = aspectos.length > 0 ? aspectos[0].n : 1;
 
@@ -374,7 +376,7 @@ export default function DashboardClient({
               Usuarios
             </Link>
           )}
-          <AutoRefresh intervalMs={30000}/>
+          <AutoRefresh intervalMs={60000}/>
           <LogoutButton/>
         </div>
       </div>
@@ -722,7 +724,7 @@ export default function DashboardClient({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {comentarios.map((r, i) => (
+                        {comentarios.slice(0, comLimit).map((r, i) => (
                           <TableRow key={i} className="border-border/30 hover:bg-muted/30 align-top">
                             <TableCell className="pl-6 py-3 align-top">
                               {r.ticket_id > 0
@@ -747,13 +749,23 @@ export default function DashboardClient({
                             </TableCell>
                             <TableCell className="align-top py-3 pr-6 max-w-xs">
                               <p className="text-xs text-foreground leading-relaxed">
-                                <Highlight text={r.comentario ?? ''} query={search}/>
+                                <Highlight text={r.comentario ?? ''} query={deferredSearch}/>
                               </p>
                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
+                    {comentarios.length > comLimit && (
+                      <div className="flex justify-center py-4">
+                        <button
+                          onClick={() => setComLimit(l => l + 50)}
+                          className="text-xs font-semibold px-4 py-2 rounded-lg border border-border/60 hover:bg-muted/40"
+                        >
+                          Ver más ({comentarios.length - comLimit} restantes)
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>

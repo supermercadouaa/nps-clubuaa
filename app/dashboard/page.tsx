@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { unstable_cache } from 'next/cache';
 import type { RowDataPacket } from 'mysql2';
 import { verifySession } from '@/lib/auth';
 import { getPool } from '@/lib/mssql';
@@ -147,6 +148,11 @@ async function fetchData(): Promise<{ rows: Row[]; enviados: number; sucursalesA
   return { rows, enviados, sucursalesAll };
 }
 
+// Datos compartidos entre todos los usuarios y pestañas: una sola lectura a
+// SQL Server + MySQL por minuto, sin importar cuántos dashboards estén abiertos.
+// El filtro de sucursales excluidas por usuario se aplica después, fuera del cache.
+const getCachedData = unstable_cache(fetchData, ['nps-dashboard-data'], { revalidate: 60 });
+
 export default async function DashboardPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get('nps_session')?.value;
@@ -154,7 +160,7 @@ export default async function DashboardPage() {
   if (!email) redirect('/dashboard/login');
 
   const [{ rows, enviados, sucursalesAll }, excluded] = await Promise.all([
-    fetchData(),
+    getCachedData(),
     getUserExcludedSucursales(email),
   ]);
 
